@@ -1,11 +1,191 @@
 <!DOCTYPE html>
-<html lang="en">
+
+<html lang="fr">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Hello World</title>
+
+        <title>Intense Experience - Réservation</title>
+
+        <!-- Font Awesome for icons -->
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+        <!-- Custom CSS -->
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+        <!-- Chart.js -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+        <!-- Vue.js -->
+        <script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/vue3-sfc-loader/dist/vue3-sfc-loader.js"></script>
     </head>
     <body>
-        <h1>Hello World</h1>
+
+        <div id="app">
+            <main class="main-content">
+                <!-- General Booking Access Point -->
+                <section id="booking" class="booking-section">
+                    <div class="container">
+                        <div class="section-intro">
+                            <h2>Réserver votre expérience unique</h2>
+                            <p>Découvrez nos suites sensorielles et réservez votre moment d'exception</p>
+                        </div>
+
+                        <!-- Booking Widget -->
+                        <booking-widget
+                            access-point="general"
+                        ></booking-widget>
+                    </div>
+                </section>
+
+                <!-- Suite Showcase (for specific access points) -->
+                <section id="suites" class="suites-showcase">
+                    <div class="container">
+                        <h2>Nos Suites</h2>
+{% raw %}
+                        <!-- Loading State -->
+                        <div v-if="loading" style="text-align: center; padding: 40px;">
+                            <i class="fas fa-spinner fa-spin fa-3x"></i>
+                            <p style="margin-top: 20px;">Chargement des suites...</p>
+                        </div>
+                        
+                        <!-- Error State -->
+                        <div v-else-if="error" style="text-align: center; padding: 40px; color: #dc3545;">
+                            <i class="fas fa-exclamation-triangle fa-3x"></i>
+                            <p style="margin-top: 20px;">{{ error }}</p>
+                            <button @click="loadSuites" style="margin-top: 20px; padding: 10px 20px; cursor: pointer;">
+                                Réessayer
+                            </button>
+                        </div>
+                        
+                        <!-- Suites Grid -->
+                        <div v-else class="suites-grid">
+                            <div class="suite-preview" v-for="suite in featuredSuites" :key="suite.id">
+                                <div class="suite-image">
+                                    <img :src="suite.image" :alt="suite.name">
+                                    <div class="suite-overlay">
+                                        <button class="book-suite-btn" @click="bookSpecificSuite(suite)">
+                                            Réserver cette suite
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="suite-info">
+                                    <h3>{{ suite.name }}</h3>
+                                    <p>{{ suite.description }}</p>
+                                    <div class="suite-features">
+                                        <span class="feature"><i class="fas fa-users"></i> {{ suite.capacity }} pers.</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+{% endraw %}
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <script>
+        const options = {
+            moduleCache: {
+                vue: Vue
+            },
+            async getFile(url) {
+                const res = await fetch(url);
+                if (!res.ok)
+                    throw Object.assign(new Error(res.statusText + ' ' + url), { res });
+                return {
+                    getContentData: asBinary => asBinary ? res.arrayBuffer() : res.text(),
+                }
+            },
+            addStyle(textContent) {
+                const style = Object.assign(document.createElement('style'), { textContent });
+                const ref = document.head.getElementsByTagName('style')[0] || null;
+                document.head.insertBefore(style, ref);
+            },
+        }
+
+        const { loadModule } = window['vue3-sfc-loader'];
+
+        // Make options and loadModule globally available for components
+        window.vueOptions = options;
+        window.vueLoadModule = loadModule;
+
+        const app = Vue.createApp({
+            data() {
+                return {
+                    currentView: 'general', // 'general' or 'specific'
+                    selectedSuite: null,
+                    featuredSuites: [],
+                    nightServiceId: '7ba0b732-93cc-477a-861d-b3850108b730', // NUITEE service ID
+                    loading: true,
+                    error: null
+                }
+            },
+            async mounted() {
+                await this.loadSuites();
+            },
+            methods: {
+                async loadSuites() {
+                    try {
+                        this.loading = true;
+                        const response = await fetch(`/intense_experience-api/suites?service_id=${this.nightServiceId}`);
+                        const data = await response.json();
+                        
+                        if (data.status === 'success' && data.suites) {
+                            // Map API data to our frontend format
+                            this.featuredSuites = data.suites
+                                .filter(suite => suite.Type === 'Suite') // Only show suites, not rooms or spaces
+                                .map(suite => {
+                                    const name = suite.Names['fr-FR'] || suite.Names[Object.keys(suite.Names)[0]] || suite.Name;
+                                    const description = suite.Descriptions['fr-FR'] || suite.Descriptions[Object.keys(suite.Descriptions)[0]] || '';
+                                    
+                                    // Map suite names to image filenames
+                                    const suiteImageMap = {
+                                        'Suite GAIA': 'suite-gaia.jpg',
+                                        'Suite EXTASE': 'suite-extase.jpg',
+                                        'Suite INTENSE': 'suite-intense.jpg'
+                                    };
+                                    
+                                    return {
+                                        id: suite.Id,
+                                        name: name,
+                                        description: description,
+                                        capacity: suite.Capacity,
+                                        extraCapacity: suite.ExtraCapacity,
+                                        image: `/static/images/${suiteImageMap[name] || 'suite-default.jpg'}`,
+                                        ordering: suite.Ordering
+                                    };
+                                })
+                                .sort((a, b) => a.ordering - b.ordering); // Sort by ordering
+                            
+                            this.loading = false;
+                        } else {
+                            throw new Error(data.error || 'Failed to load suites');
+                        }
+                    } catch (error) {
+                        console.error('Error loading suites:', error);
+                        this.error = 'Impossible de charger les suites. Veuillez réessayer plus tard.';
+                        this.loading = false;
+                    }
+                },
+                bookSpecificSuite(suite) {
+                    this.selectedSuite = suite;
+                    this.currentView = 'specific';
+                    // Scroll to booking section
+                    document.getElementById('booking').scrollIntoView({ behavior: 'smooth' });
+                },
+                resetBooking() {
+                    this.currentView = 'general';
+                    this.selectedSuite = null;
+                }
+            },
+            components: {
+                'booking-widget': Vue.defineAsyncComponent(() => loadModule('/static/vue/BookingWidget.vue', options)),
+            }
+        });
+        app.mount('#app');
+        </script>
     </body>
+
 </html>

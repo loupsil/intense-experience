@@ -1,4 +1,5 @@
 from flask import Flask, send_from_directory, Response, render_template, redirect, jsonify, request
+from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 from intense_experience import intense_experience_bp
@@ -7,6 +8,9 @@ from intense_experience import intense_experience_bp
 load_dotenv()
 
 app = Flask(__name__)
+
+# Enable CORS for all routes
+CORS(app)
 
 # Register blueprints
 app.register_blueprint(intense_experience_bp)

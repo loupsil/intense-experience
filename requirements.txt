@@ -2,3 +2,5 @@ Flask==2.2.2
 requests==2.31.0
 Werkzeug==2.2.3
 python-dotenv==1.0.1
+Flask-CORS==4.0.0
+chart.js==4.4.0
