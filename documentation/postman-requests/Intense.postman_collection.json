@@ -1,0 +1,461 @@
+{
+	"info": {
+		"_postman_id": "6a8c9c5e-09b7-47a6-98e8-ae146d44f60e",
+		"name": "Intense",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "32491321"
+	},
+	"item": [
+		{
+			"name": "Fetch All Reservations",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n  \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\",\r\n  \"Client\": \"Postman Demo\",\r\n  \"StartUtc\": \"2025-11-10T00:00:00Z\",\r\n  \"EndUtc\": \"2025-11-14T00:00:00Z\"\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/reservations/getAll",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"reservations",
+						"getAll"
+					]
+				},
+				"description": "Fecthing reservation. \r\nCaution : limit of 100:00 range"
+			},
+			"response": []
+		},
+		{
+			"name": "Fetch All Resources (Espace - Not used)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n  \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\",\r\n  \"Client\": \"Postman Demo\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/resources/getAll",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"resources",
+						"getAll"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Configuration",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n  \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\"\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/configuration/get",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"configuration",
+						"get"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Fetch All Services (Nuitée VS Journée)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n  \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\"\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/services/getAll",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"services",
+						"getAll"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Fetch All Products (Articles - Extra)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n  \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\",\r\n  \"ServiceIds\": [\r\n    \"05644daa-3d55-452c-b434-b3850108bbc3\",\r\n    \"f4137fc1-1b72-40d9-97e2-b3850108bbc3\",\r\n    \"a094b98c-b6fd-4936-a9c7-b3850108bbc3\",\r\n    \"56d5f465-a1da-4b62-a9fb-b3850108bbc3\",\r\n    \"fb46039c-9c3f-4eb6-ba31-b3850108bbc3\",\r\n    \"86fcc6a7-75ce-457a-a425-b3850108b6bf\",\r\n    \"34e0d02a-36d2-4bf5-82a7-b3850108b729\",\r\n    \"7ba0b732-93cc-477a-861d-b3850108b730\"\r\n  ],\r\n  \"EnterpriseIds\": [\r\n    \"c390a691-e9a0-4aa0-860c-b3850108ab4c\"\r\n  ],\r\n  \"IncludeDefault\": false,\r\n  \"Limitation\": {\r\n    \"Count\": 100\r\n  }\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/products/getAll",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"products",
+						"getAll"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Fetch All Rates (Liste de prix)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n  \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\",\r\n  \"EnterpriseIds\": [\r\n    \"c390a691-e9a0-4aa0-860c-b3850108ab4c\"\r\n  ],\r\n  \"IncludeDefault\": false,\r\n  \"Limitation\": {\r\n    \"Count\": 100\r\n  }\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/rates/getAll",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"rates",
+						"getAll"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Fetch All Resource Categories (Rooms)",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n    \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\",\r\n    \"EnterpriseIds\": [\r\n        \"c390a691-e9a0-4aa0-860c-b3850108ab4c\"\r\n    ],\r\n    \"ServiceIds\": [\r\n        \"86fcc6a7-75ce-457a-a425-b3850108b6bf\",\r\n        \"7ba0b732-93cc-477a-861d-b3850108b730\"\r\n    ],\r\n    \"IncludeDefault\": false,\r\n    \"Limitation\": {\r\n        \"Count\": 100\r\n    }\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/resourceCategories/getAll",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"resourceCategories",
+						"getAll"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Fetch Rate Pricing (Room prices per date)",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n  \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\",\r\n  \"EnterpriseIds\": [\r\n    \"c390a691-e9a0-4aa0-860c-b3850108ab4c\"\r\n  ],\r\n  \"Client\": \"TestIntegration 1.0.0\",\r\n  \"RateId\": \"ed9391ac-b184-4876-8cc1-b3850108b8b0\",\r\n  \"FirstTimeUnitStartUtc\": \"2025-11-14T23:00:00.000Z\",\r\n  \"LastTimeUnitStartUtc\": \"2025-11-16T23:00:00.000Z\"\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/rates/getPricing",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"rates",
+						"getPricing"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Fetch Client",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n    \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\",\r\n    \"FirstNames\" : [\r\n        \"Louis\"\r\n    ],\r\n    \"Limitation\": {\r\n        \"Count\": 100\r\n    }\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/customers/getAll",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"customers",
+						"getAll"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Fetch Age Categories",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n    \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\",\r\n    \"EnterpriseIds\": [\r\n        \"c390a691-e9a0-4aa0-860c-b3850108ab4c\"\r\n    ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/ageCategories/getAll",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"ageCategories",
+						"getAll"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Create Reservation",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n  \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\",\r\n  \"Client\": \"My Integration 1.0.0\",\r\n  \"ServiceId\": \"7ba0b732-93cc-477a-861d-b3850108b730\",\r\n  \"Reservations\": [\r\n    {\r\n      \"Identifier\": \"API-TEST-001\",\r\n      \"State\": \"Confirmed\",\r\n      \"StartUtc\": \"2025-11-11T14:00:00Z\",\r\n      \"EndUtc\": \"2025-11-12T10:00:00Z\",\r\n      \"CustomerId\": \"b6b5cc6b-ebc1-45a8-bc6f-b390010126cb\",\r\n      \"BookerId\": \"b6b5cc6b-ebc1-45a8-bc6f-b390010126cb\",\r\n      \"PersonCounts\": [\r\n        {\r\n          \"AgeCategoryId\": \"6cef9c83-4199-4b40-972b-b3850108b8a6\", \r\n          \"Count\": 2\r\n        }\r\n      ],\r\n      \"RequestedCategoryId\": \"0d535116-b1db-476e-8bff-b3850108c66f\",\r\n      \"RateId\": \"ed9391ac-b184-4876-8cc1-b3850108b8b0\"\r\n    }\r\n  ]\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/reservations/add",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"reservations",
+						"add"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Create Customer",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n  \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\",\r\n  \"Client\": \"My Integration 1.0.0\",\r\n  \"FirstName\": \"John\",\r\n  \"LastName\": \"Doe\",\r\n  \"Email\": \"john.doe@example.com\",\r\n  \"Phone\": \"+33612345678\",\r\n  \"OverwriteExisting\": false\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/customers/add",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"customers",
+						"add"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Create Payment Request (Payment Link)",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ClientToken\": \"E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D\",\r\n  \"AccessToken\": \"C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E\",\r\n  \"Client\": \"My Integration 1.0.0\",\r\n  \"PaymentRequests\": [\r\n    {\r\n      \"AccountId\": \"b6b5cc6b-ebc1-45a8-bc6f-b390010126cb\",\r\n      \"Amount\": {\r\n        \"Currency\": \"EUR\",\r\n        \"Value\": 100.00\r\n      },\r\n      \"Type\": \"Payment\",                 \r\n      \"Reason\": \"PaymentCardMissing\",    \r\n      \"ExpirationUtc\": \"2025-11-15T12:00:00Z\",\r\n      \"Description\": \"Prepayment for reservation #5\",\r\n      \"ReservationId\": \"4d57223c-4d47-4ab6-a138-b3900105800b\"\r\n    }\r\n  ]\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mews-demo.com/api/connector/v1/paymentRequests/add",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mews-demo",
+						"com"
+					],
+					"path": [
+						"api",
+						"connector",
+						"v1",
+						"paymentRequests",
+						"add"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
