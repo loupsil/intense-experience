@@ -212,30 +212,40 @@ def check_availability():
             res_start = reservation.get('StartUtc', 'Unknown')
             res_end = reservation.get('EndUtc', 'Unknown')
             res_state = reservation.get('State', 'Unknown')
+            res_requested_category = reservation.get('RequestedCategoryId', 'Unknown')
+            res_assigned_resource = reservation.get('AssignedResourceId', 'Unknown')
+            res_assigned_space = reservation.get('AssignedSpaceId', 'Unknown')
 
             logger.info(f"\n--- Reservation {idx}/{total_reservations} ---")
             logger.info(f"ID: {res_id}")
             logger.info(f"Start: {res_start}")
             logger.info(f"End: {res_end}")
             logger.info(f"State: {res_state}")
-
-            res_categories = reservation.get("ResourceCategoryAssignments", [])
-            logger.info(f"Resource Category Assignments: {len(res_categories)}")
-
-            for cat_idx, cat in enumerate(res_categories):
-                cat_id = cat.get('ResourceCategoryId', 'Unknown')
-                logger.info(f"  Category {cat_idx + 1}: {cat_id}")
+            logger.info(f"RequestedCategoryId (Suite Type): {res_requested_category}")
+            logger.info(f"AssignedResourceId (Physical Space): {res_assigned_resource}")
+            logger.info(f"AssignedSpaceId: {res_assigned_space}")
 
             if suite_id:
                 # Check specific suite availability
-                logger.info(f"Checking if reservation conflicts with suite {suite_id}")
-                suite_matches = [cat.get("ResourceCategoryId") == suite_id for cat in res_categories]
-                any_match = any(suite_matches)
-                logger.info(f"Suite matches: {suite_matches}")
-                logger.info(f"Any match: {any_match}")
+                # The suite_id parameter is a ResourceCategory ID (the suite type/category)
+                # We check if this reservation uses that category by comparing RequestedCategoryId
+                # 
+                # Note: In Mews, a ResourceCategory (suite type) may have multiple physical 
+                # Resources (rooms) assigned to it. This check tells us if ANY room of this
+                # suite type is booked. The AssignedResourceId shows WHICH specific physical
+                # room is being used.
+                #
+                # For more sophisticated availability (checking if ALL rooms of a type are booked),
+                # we would need to fetch Resources and their category assignments.
+                logger.info(f"Checking if reservation conflicts with suite category {suite_id}")
+                
+                category_match = res_requested_category == suite_id
+                logger.info(f"RequestedCategoryId matches suite_id: {category_match}")
 
-                if any_match:
+                if category_match:
                     logger.warning(f"CONFLICT FOUND: Reservation {res_id} conflicts with suite {suite_id}")
+                    logger.warning(f"  Requested Category: {res_requested_category}")
+                    logger.warning(f"  Assigned to physical resource/space: {res_assigned_resource}")
                     conflicting_reservations.append(reservation)
                     is_available = False
                 else:
