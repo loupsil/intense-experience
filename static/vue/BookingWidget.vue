@@ -385,9 +385,9 @@ export default {
         const response = await fetch('/intense_experience-api/products')
         const data = await response.json()
         if (data.status === 'success') {
-          this.availableProducts = data.products.filter(p =>
-            p.Type === 'Additional' || p.Type === 'Upsell'
-          )
+          // Load all products without filtering
+          this.availableProducts = data.products || []
+          console.log('Loaded products for options:', this.availableProducts.length)
         }
       } catch (error) {
         console.error('Error loading products:', error)
@@ -403,13 +403,28 @@ export default {
       if (!this.selectedSuite || !this.selectedDates.start || !this.selectedDates.end) return
 
       try {
+        // Convert dates to TimeUnit start times (23:00:00.000Z)
+        const startDate = new Date(this.selectedDates.start)
+        const endDate = new Date(this.selectedDates.end)
+        
+        // Set to 23:00 UTC for TimeUnit start
+        startDate.setUTCHours(23, 0, 0, 0)
+        
+        // For end date, we need the TimeUnit that covers the checkout
+        // If checkout is before 23:00, use previous day at 23:00
+        // If checkout is at or after 23:00, use same day at 23:00
+        if (endDate.getUTCHours() < 23) {
+          endDate.setUTCDate(endDate.getUTCDate() - 1)
+        }
+        endDate.setUTCHours(23, 0, 0, 0)
+
         const response = await fetch('/intense_experience-api/pricing', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             rate_id: 'ed9391ac-b184-4876-8cc1-b3850108b8b0', // Default rate
-            start_date: this.selectedDates.start,
-            end_date: this.selectedDates.end,
+            start_date: startDate.toISOString(),
+            end_date: endDate.toISOString(),
             suite_id: this.selectedSuite.Id
           })
         })

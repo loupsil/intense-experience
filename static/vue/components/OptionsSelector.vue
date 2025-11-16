@@ -123,58 +123,24 @@ export default {
     },
 
     getProductPrice(product) {
-      // Extract price from product data
-      if (product.Amounts && product.Amounts.length > 0) {
-        const amount = product.Amounts[0]
-        if (amount.Value) {
-          return amount.Value
-        }
+      // Extract price from product data (Mews API format)
+      if (product.Price && typeof product.Price.GrossValue === 'number') {
+        return product.Price.GrossValue
       }
 
-      // Fallback prices based on product type
-      const fallbackPrices = {
-        'Petit-déjeuner': 25,
-        'Early check-in': 50,
-        'Late check-out': 75,
-        'Champagne': 85,
-        'Massage': 120,
-        'Spa': 150
+      // Try pricing field as well
+      if (product.Pricing && product.Pricing.Value && typeof product.Pricing.Value.GrossValue === 'number') {
+        return product.Pricing.Value.GrossValue
       }
 
-      const productName = product.Names?.['fr-FR'] || product.Name
-      for (const [key, price] of Object.entries(fallbackPrices)) {
-        if (productName.toLowerCase().includes(key.toLowerCase())) {
-          return price
-        }
-      }
-
-      return 0
+      // No price found - return error indicator
+      console.error('Price not found for product:', product.Name || product.Id)
+      return 'N/A'
     },
 
     getProductDescription(product) {
-      // Try to get description from product data
-      if (product.Descriptions?.['fr-FR']) {
-        return product.Descriptions['fr-FR']
-      }
-
-      // Fallback descriptions
-      const descriptions = {
-        'Petit-déjeuner': 'Déjeuner gastronomique servi en suite',
-        'Early check-in': 'Arrivée anticipée (à partir de 14h pour les journées)',
-        'Late check-out': 'Départ différé (jusqu\'à 12h pour les nuitées)',
-        'Champagne': 'Bouteille de champagne premium',
-        'Massage': 'Massage relaxant d\'1 heure',
-        'Spa': 'Accès au spa pendant votre séjour'
-      }
-
-      const productName = product.Names?.['fr-FR'] || product.Name
-      for (const [key, desc] of Object.entries(descriptions)) {
-        if (productName.toLowerCase().includes(key.toLowerCase())) {
-          return desc
-        }
-      }
-
-      return 'Service supplémentaire premium'
+      // Return description from product data if available
+      return product.Descriptions?.['fr-FR'] || ''
     },
 
     getCategoryName(product) {
