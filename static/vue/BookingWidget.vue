@@ -197,7 +197,7 @@ export default {
     },
     accessPoint: {
       type: String,
-      default: 'general' // 'general' or 'specific'
+      default: 'general' 
     }
   },
   data() {

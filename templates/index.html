@@ -70,8 +70,6 @@
         const app = Vue.createApp({
             data() {
                 return {
-                    currentView: 'general', // 'general' or 'specific'
-                    selectedSuite: null,
                     featuredSuites: [],
                     nightServiceId: '7ba0b732-93cc-477a-861d-b3850108b730', // NUITEE service ID
                     loading: true,
@@ -124,16 +122,6 @@
                         this.error = 'Impossible de charger les suites. Veuillez réessayer plus tard.';
                         this.loading = false;
                     }
-                },
-                bookSpecificSuite(suite) {
-                    this.selectedSuite = suite;
-                    this.currentView = 'specific';
-                    // Scroll to booking section
-                    document.getElementById('booking').scrollIntoView({ behavior: 'smooth' });
-                },
-                resetBooking() {
-                    this.currentView = 'general';
-                    this.selectedSuite = null;
                 }
             },
             components: {
