@@ -52,32 +52,9 @@
         </div>
       </div>
 
-      <div class="form-section">
-        <h3>Préférences spéciales</h3>
-
-        <div class="form-group">
-          <label for="specialRequests">Demandes spéciales</label>
-          <textarea
-            id="specialRequests"
-            v-model="form.specialRequests"
-            placeholder="Allergies, préférences alimentaires, occasions spéciales..."
-            rows="4"
-          ></textarea>
-        </div>
-      </div>
 
       <div class="form-section">
         <div class="consent-section">
-          <div class="consent-item">
-            <input
-              id="newsletter"
-              type="checkbox"
-              v-model="form.newsletter"
-            >
-            <label for="newsletter">
-              Je souhaite recevoir la newsletter et les offres spéciales
-            </label>
-          </div>
 
           <div class="consent-item">
             <input

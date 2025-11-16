@@ -554,23 +554,24 @@ def create_reservation():
     logger.info("=" * 80)
     return jsonify({"error": "Failed to create reservation", "status": "error"}), 500
 
-@intense_experience_bp.route('/intense_experience-api/create-payment-request', methods=['POST'])
-def create_payment_request():
+@intense_experience_bp.route('/api/payment-request', methods=['POST'])
+def payment_request():
     """Create a payment request for the reservation"""
     data = request.json
-    customer_id = data.get('customer_id')
-    amount = data.get('amount')
-    reservation_id = data.get('reservation_id')
-    description = data.get('description', 'Prepayment for reservation')
+
+    # Extract data from the request (matching the format sent by PaymentComponent)
+    payment_request_data = data.get('PaymentRequests', [{}])[0]
+    customer_id = payment_request_data.get('AccountId')
+    amount = payment_request_data.get('Amount', {}).get('Value')
+    reservation_id = payment_request_data.get('ReservationId')
+    description = payment_request_data.get('Description', 'Prepayment for reservation')
+    expiration = payment_request_data.get('ExpirationUtc')
 
     if not all([customer_id, amount, reservation_id]):
         return jsonify({"error": "Missing required payment parameters", "status": "error"}), 400
 
-    # Expiration in 24 hours
-    expiration = (datetime.utcnow() + timedelta(hours=24)).isoformat() + 'Z'
-
     payload = {
-        "Client": "Intense Experience Booking",
+        "Client": data.get('Client', 'Intense Experience 1.0.0'),
         "PaymentRequests": [{
             "AccountId": customer_id,
             "Amount": {
@@ -578,7 +579,7 @@ def create_payment_request():
                 "Value": float(amount)
             },
             "Type": "Payment",
-            "Reason": "PaymentCardMissing",
+            "Reason": "Prepayment",
             "ExpirationUtc": expiration,
             "Description": description,
             "ReservationId": reservation_id
@@ -587,14 +588,31 @@ def create_payment_request():
 
     result = make_mews_request("paymentRequests/add", payload)
     if result and "PaymentRequests" in result and result["PaymentRequests"]:
+        return jsonify(result)
+    else:
+        return jsonify({"error": "Failed to create payment request", "status": "error"}), 500
+
+
+@intense_experience_bp.route('/api/payment-request/<payment_request_id>/status', methods=['GET'])
+def get_payment_request_status(payment_request_id):
+    """Get the status of a payment request"""
+    payload = {
+        "PaymentRequestIds": [payment_request_id]
+    }
+
+    result = make_mews_request("paymentRequests/getAll", payload)
+    if result and "PaymentRequests" in result and result["PaymentRequests"]:
         payment_request = result["PaymentRequests"][0]
-        payment_url = f"https://app.mews.com/navigator/payment-requests/detail/{payment_request['Id']}?ccy=EUR&language=fr-FR"
         return jsonify({
-            "payment_request": payment_request,
-            "payment_url": payment_url,
-            "status": "success"
+            "id": payment_request.get("Id"),
+            "state": payment_request.get("State"),
+            "status": payment_request.get("State"),  # For compatibility
+            "amount": payment_request.get("Amount"),
+            "description": payment_request.get("Description")
         })
-    return jsonify({"error": "Failed to create payment request", "status": "error"}), 500
+    else:
+        return jsonify({"error": "Payment request not found", "status": "error"}), 404
+
 
 @intense_experience_bp.route('/intense_experience-api/test', methods=['GET'])
 def dummy_route():

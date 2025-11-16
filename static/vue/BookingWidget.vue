@@ -126,17 +126,10 @@
       <div v-if="currentStep === 5" class="step">
         <h2>Vos informations</h2>
         <CustomerForm
-          @customer-info="updateCustomerInfo"
+          @customer-info="createReservation"
         />
         <div class="step-navigation">
           <button class="prev-btn" @click="prevStep">Retour</button>
-          <button
-            class="next-btn"
-            :disabled="!customerInfoComplete"
-            @click="createReservation"
-          >
-            Finaliser la réservation
-          </button>
         </div>
       </div>
 
@@ -177,6 +170,15 @@
         </div>
       </div>
 
+      <!-- Step 7: Payment -->
+      <div v-if="currentStep === 7" class="step">
+        <PaymentComponent
+          :reservation="reservation"
+          :amount="pricing.total + pricing.options"
+          @reset-booking="resetBooking"
+        />
+      </div>
+
       <!-- Loading overlay -->
       <div v-if="loading" class="loading-overlay">
         <div class="spinner"></div>
@@ -193,7 +195,8 @@ export default {
     'CalendarSelector': Vue.defineAsyncComponent(() => window.vueLoadModule('/static/vue/components/CalendarSelector.vue', window.vueOptions)),
     'SuiteSelector': Vue.defineAsyncComponent(() => window.vueLoadModule('/static/vue/components/SuiteSelector.vue', window.vueOptions)),
     'OptionsSelector': Vue.defineAsyncComponent(() => window.vueLoadModule('/static/vue/components/OptionsSelector.vue', window.vueOptions)),
-    'CustomerForm': Vue.defineAsyncComponent(() => window.vueLoadModule('/static/vue/components/CustomerForm.vue', window.vueOptions))
+    'CustomerForm': Vue.defineAsyncComponent(() => window.vueLoadModule('/static/vue/components/CustomerForm.vue', window.vueOptions)),
+    'PaymentComponent': Vue.defineAsyncComponent(() => window.vueLoadModule('/static/vue/components/PaymentComponent.vue', window.vueOptions))
   },
   props: {
     preselectedSuite: {
@@ -451,11 +454,10 @@ export default {
       }
     },
 
-    updateCustomerInfo(info) {
-      this.customerInfo = info
-    },
-
-    async createReservation() {
+    async createReservation(customerInfo = null) {
+      if (customerInfo) {
+        this.customerInfo = customerInfo
+      }
       this.loading = true
       this.loadingMessage = 'Création de votre réservation...'
 
@@ -518,8 +520,8 @@ export default {
         console.log('FRONTEND: Reservation created successfully:', this.reservation.Id)
         console.log('='.repeat(80))
 
-        // Payment will be handled later - for now just show confirmation
-        this.nextStep()
+        // Go to payment step
+        this.currentStep = 7
 
       } catch (error) {
         console.error('FRONTEND: Error creating reservation:', error)
@@ -613,6 +615,19 @@ export default {
       // No price found - return error indicator
       console.error('Price not found for product:', product.Name || product.Id)
       return 'N/A'
+    },
+
+    resetBooking() {
+      // Reset the entire booking process
+      this.currentStep = 1
+      this.selectedService = null
+      this.selectedSuite = null
+      this.selectedDates = { start: null, end: null }
+      this.selectedOptions = []
+      this.customerInfo = { firstName: '', lastName: '', email: '', phone: '' }
+      this.pricing = { total: 0, options: 0, breakdown: [] }
+      this.reservation = null
+      this.accessPoint = 'general'
     }
   }
 }
