@@ -400,10 +400,10 @@ export default {
         // Convert dates to TimeUnit start times (23:00:00.000Z)
         const startDate = new Date(this.selectedDates.start)
         const endDate = new Date(this.selectedDates.end)
-        
+
         // Set to 23:00 UTC for TimeUnit start
         startDate.setUTCHours(23, 0, 0, 0)
-        
+
         // For end date, we need the TimeUnit that covers the checkout
         // If checkout is before 23:00, use previous day at 23:00
         // If checkout is at or after 23:00, use same day at 23:00
@@ -412,11 +412,14 @@ export default {
         }
         endDate.setUTCHours(23, 0, 0, 0)
 
+        // Select appropriate rate based on service
+        const rateId = this.getDefaultRateForService()
+
         const response = await fetch('/intense_experience-api/pricing', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            rate_id: 'ed9391ac-b184-4876-8cc1-b3850108b8b0', // Default rate
+            rate_id: rateId,
             start_date: startDate.toISOString(),
             end_date: endDate.toISOString(),
             suite_id: this.selectedSuite.Id
@@ -478,7 +481,7 @@ export default {
           service_id: this.selectedService.Id,
           customer_id: customerData.customer.Id,
           suite_id: this.selectedSuite.Id,
-          rate_id: 'ed9391ac-b184-4876-8cc1-b3850108b8b0',
+          rate_id: this.getDefaultRateForService(),
           start_date: this.selectedDates.start,
           end_date: this.selectedDates.end,
           person_count: 2,
@@ -557,6 +560,26 @@ export default {
 
     getServiceIcon(serviceId) {
       return serviceId === '86fcc6a7-75ce-457a-a425-b3850108b6bf' ? 'fas fa-sun' : 'fas fa-moon'
+    },
+
+    getDefaultRateForService() {
+      // Return appropriate rate ID based on service type
+      const JOURNEE_ID = '86fcc6a7-75ce-457a-a425-b3850108b6bf'
+      const NUITEE_ID = '7ba0b732-93cc-477a-861d-b3850108b730'
+
+      if (!this.selectedService) return null
+
+      if (this.selectedService.Id === JOURNEE_ID) {
+        // Day service - use weekday rate
+        return 'c3c2109d-984a-4ad4-978e-b3850108b8ad'
+      } else if (this.selectedService.Id === NUITEE_ID) {
+        // Night service - use night rate
+        return 'ed9391ac-b184-4876-8cc1-b3850108b8b0'
+      }
+
+      // Fallback to night rate if service not recognized
+      console.warn('Unknown service ID, using default night rate:', this.selectedService.Id)
+      return 'ed9391ac-b184-4876-8cc1-b3850108b8b0'
     },
 
     formatDateRange(start, end) {

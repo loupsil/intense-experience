@@ -346,6 +346,20 @@ def get_products():
         return jsonify({"products": result["Products"], "status": "success"})
     return jsonify({"error": "Failed to fetch products", "status": "error"}), 500
 
+@intense_experience_bp.route('/intense_experience-api/age-categories', methods=['GET'])
+def get_age_categories():
+    """Get available age categories for services"""
+    payload = {
+        "EnterpriseIds": [ENTERPRISE_ID],
+        "IncludeDefault": False,
+        "Limitation": {"Count": 100}
+    }
+
+    result = make_mews_request("ageCategories/getAll", payload)
+    if result and "AgeCategories" in result:
+        return jsonify({"age_categories": result["AgeCategories"], "status": "success"})
+    return jsonify({"error": "Failed to fetch age categories", "status": "error"}), 500
+
 @intense_experience_bp.route('/intense_experience-api/create-customer', methods=['POST'])
 def create_customer():
     """Create a new customer"""
@@ -409,16 +423,40 @@ def create_customer():
     logger.info("=" * 80)
     return jsonify({"error": "Failed to create customer", "status": "error"}), 500
 
+def get_adult_age_category_for_service(service_id):
+    """Get the adult age category ID for a specific service"""
+    payload = {
+        "EnterpriseIds": [ENTERPRISE_ID],
+        "IncludeDefault": False,
+        "Limitation": {"Count": 100}
+    }
+
+    result = make_mews_request("ageCategories/getAll", payload)
+    if result and "AgeCategories" in result:
+        for category in result["AgeCategories"]:
+            if (category.get("ServiceId") == service_id and
+                category.get("Classification") == "Adult" and
+                category.get("IsActive")):
+                return category.get("Id")
+
+    # Fallback to hardcoded values if API fails
+    if service_id == DAY_SERVICE_ID:
+        return "a78b7aca-fa0b-4199-8b4e-b3850108b8a5"  # Day service adult category
+    elif service_id == NIGHT_SERVICE_ID:
+        return "6cef9c83-4199-4b40-972b-b3850108b8a6"  # Night service adult category
+
+    return "6cef9c83-4199-4b40-972b-b3850108b8a6"  # Default fallback
+
 @intense_experience_bp.route('/intense_experience-api/create-reservation', methods=['POST'])
 def create_reservation():
     """Create a reservation"""
     data = request.json
-    
+
     logger.info("=" * 80)
     logger.info("CREATE RESERVATION - Request received")
     logger.info("=" * 80)
     logger.info(f"Raw request data: {data}")
-    
+
     service_id = data.get('service_id')
     customer_id = data.get('customer_id')
     suite_id = data.get('suite_id')
@@ -448,6 +486,10 @@ def create_reservation():
         logger.error(f"  end_date present: {bool(end_date)}")
         return jsonify({"error": "Missing required reservation parameters", "status": "error"}), 400
 
+    # Get the correct age category for the service
+    age_category_id = get_adult_age_category_for_service(service_id)
+    logger.info(f"Using age category ID: {age_category_id} for service {service_id}")
+
     reservation_identifier = f"IE-{uuid.uuid4().hex[:8].upper()}"
     logger.info(f"Generated reservation identifier: {reservation_identifier}")
 
@@ -458,7 +500,7 @@ def create_reservation():
         "EndUtc": end_date,
         "CustomerId": customer_id,
         "BookerId": customer_id,
-        "PersonCounts": [{"AgeCategoryId": "6cef9c83-4199-4b40-972b-b3850108b8a6", "Count": person_count}],
+        "PersonCounts": [{"AgeCategoryId": age_category_id, "Count": person_count}],
         "RequestedCategoryId": suite_id,
         "RateId": rate_id
     }
