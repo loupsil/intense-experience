@@ -11,6 +11,7 @@
               id="firstName"
               type="text"
               v-model="form.firstName"
+              :disabled="loading"
               required
               placeholder="Votre prénom"
             >
@@ -22,6 +23,7 @@
               id="lastName"
               type="text"
               v-model="form.lastName"
+              :disabled="loading"
               required
               placeholder="Votre nom"
             >
@@ -35,6 +37,7 @@
               id="email"
               type="email"
               v-model="form.email"
+              :disabled="loading"
               required
               placeholder="votre.email@exemple.com"
             >
@@ -46,6 +49,7 @@
               id="phone"
               type="tel"
               v-model="form.phone"
+              :disabled="loading"
               placeholder="+32 123 456 789"
             >
           </div>
@@ -61,6 +65,7 @@
               id="terms"
               type="checkbox"
               v-model="form.acceptTerms"
+              :disabled="loading"
               required
             >
             <label for="terms">
@@ -74,9 +79,9 @@
         <button
           type="submit"
           class="submit-btn"
-          :disabled="!isFormValid"
+          :disabled="!isFormValid || loading"
         >
-          Continuer vers le paiement
+          {{ loading ? 'Création du profil...' : 'Continuer' }}
         </button>
       </div>
     </form>
@@ -102,6 +107,12 @@
 <script>
 export default {
   name: 'CustomerForm',
+  props: {
+    loading: {
+      type: Boolean,
+      default: false
+    }
+  },
   data() {
     return {
       form: {

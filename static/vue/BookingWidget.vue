@@ -65,8 +65,20 @@
         </div>
       </div>
 
-      <!-- Step 3: Suite Selection (only for general access) -->
-      <div v-if="currentStep === 3 && !preselectedSuite" class="step">
+      <!-- Step 3: Customer Information -->
+      <div v-if="currentStep === 3" class="step">
+        <h2>Vos informations</h2>
+        <CustomerForm
+          :loading="loading"
+          @customer-info="handleCustomerInfo"
+        />
+        <div class="step-navigation">
+          <button class="prev-btn" @click="prevStep">Retour</button>
+        </div>
+      </div>
+
+      <!-- Step 4: Suite Selection (only for general access) -->
+      <div v-if="currentStep === 4 && !preselectedSuite" class="step">
         <h2>Choisissez votre suite</h2>
         <SuiteSelector
           :suites="availableSuites"
@@ -85,8 +97,8 @@
         </div>
       </div>
 
-      <!-- Step 4: Options & Upsells -->
-      <div v-if="currentStep === 4" class="step">
+      <!-- Step 5: Options & Upsells -->
+      <div v-if="currentStep === 5" class="step">
         <h2>Options supplémentaires</h2>
         <OptionsSelector
           :products="availableProducts"
@@ -122,16 +134,6 @@
         </div>
       </div>
 
-      <!-- Step 5: Customer Information -->
-      <div v-if="currentStep === 5" class="step">
-        <h2>Vos informations</h2>
-        <CustomerForm
-          @customer-info="createReservation"
-        />
-        <div class="step-navigation">
-          <button class="prev-btn" @click="prevStep">Retour</button>
-        </div>
-      </div>
 
       <!-- Step 6: Confirmation -->
       <div v-if="currentStep === 6" class="step">
@@ -155,18 +157,29 @@
             </div>
             <div class="detail-item">
               <span class="label">Client :</span>
-              <span>{{ customerInfo.firstName }} {{ customerInfo.lastName }}</span>
+              <span>{{ customer?.FirstName }} {{ customer?.LastName }}</span>
             </div>
             <div class="detail-item">
               <span class="label">Email :</span>
-              <span>{{ customerInfo.email }}</span>
+              <span>{{ customer?.Email }}</span>
             </div>
             <div class="detail-item total">
               <span class="label">Total :</span>
               <span>{{ pricing.total + pricing.options }}€</span>
             </div>
           </div>
-          <p class="payment-note">Le paiement sera traité ultérieurement.</p>
+
+          <div class="payment-choice">
+            <p>Que souhaitez-vous faire maintenant ?</p>
+            <div class="choice-buttons">
+              <button class="pay-now-btn" @click="nextStep">
+                Payer maintenant
+              </button>
+              <button class="home-btn" @click="resetBooking">
+                Retour à l'accueil
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -223,6 +236,7 @@ export default {
       selectedOptions: [],
       pricing: { total: 0, options: 0 },
       customerInfo: {},
+      customer: null,
       reservation: null,
       loading: false,
       loadingMessage: '',
@@ -278,6 +292,61 @@ export default {
       this.selectedDates = {
         start: dates.start,
         end: dates.end
+      }
+    },
+
+    async handleCustomerInfo(customerInfo) {
+      console.log('FRONTEND: handleCustomerInfo called with:', customerInfo)
+      this.loading = true
+      this.loadingMessage = 'Création de votre profil client...'
+
+      try {
+        console.log('='.repeat(80))
+        console.log('FRONTEND: Creating customer after date selection')
+        console.log('='.repeat(80))
+        console.log('FRONTEND: Customer info:', customerInfo)
+
+        const customerResponse = await fetch('/intense_experience-api/create-customer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(customerInfo)
+        })
+
+        console.log('FRONTEND: Customer response status:', customerResponse.status)
+
+        if (!customerResponse.ok) {
+          const errorText = await customerResponse.text()
+          console.error('FRONTEND: HTTP error:', customerResponse.status, errorText)
+          throw new Error(`HTTP ${customerResponse.status}: ${errorText}`)
+        }
+
+        const customerData = await customerResponse.json()
+        console.log('FRONTEND: Customer response data:', customerData)
+
+        if (!customerData || customerData.status !== 'success') {
+          console.error('FRONTEND: Failed to create customer:', customerData?.error || 'Unknown error')
+          throw new Error(customerData?.error || 'Failed to create customer')
+        }
+
+        if (!customerData.customer || !customerData.customer.Id) {
+          console.error('FRONTEND: Invalid customer data received:', customerData)
+          throw new Error('Invalid customer data received')
+        }
+
+        console.log('FRONTEND: Customer created successfully:', customerData.customer.Id)
+
+        // Store customer info and proceed to next step
+        this.customerInfo = customerInfo
+        this.customer = customerData.customer
+        console.log('FRONTEND: About to call nextStep()')
+
+        // Don't set loading to false here - let nextStep() handle it
+        await this.nextStep()
+
+      } catch (error) {
+        console.error('FRONTEND: Error in handleCustomerInfo:', error)
+        alert(`Erreur lors de la création du profil client: ${error.message}`)
+        this.loading = false
       }
     },
 
@@ -454,10 +523,7 @@ export default {
       }
     },
 
-    async createReservation(customerInfo = null) {
-      if (customerInfo) {
-        this.customerInfo = customerInfo
-      }
+    async createReservation() {
       this.loading = true
       this.loadingMessage = 'Création de votre réservation...'
 
@@ -465,33 +531,15 @@ export default {
         console.log('='.repeat(80))
         console.log('FRONTEND: Creating reservation flow')
         console.log('='.repeat(80))
-        
-        // First create customer
-        console.log('FRONTEND: Step 1 - Creating customer')
-        console.log('FRONTEND: Customer info:', this.customerInfo)
-        
-        const customerResponse = await fetch('/intense_experience-api/create-customer', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(this.customerInfo)
-        })
-        
-        console.log('FRONTEND: Customer response status:', customerResponse.status)
-        const customerData = await customerResponse.json()
-        console.log('FRONTEND: Customer response data:', customerData)
 
-        if (customerData.status !== 'success') {
-          console.error('FRONTEND: Failed to create customer:', customerData.error)
-          throw new Error('Failed to create customer')
-        }
-        
-        console.log('FRONTEND: Customer created successfully:', customerData.customer.Id)
+        // Use existing customer (created in step 3)
+        console.log('FRONTEND: Using existing customer:', this.customer.Id)
 
-        // Then create reservation
-        console.log('FRONTEND: Step 2 - Creating reservation')
+        // Create reservation
+        console.log('FRONTEND: Creating reservation')
         const reservationPayload = {
           service_id: this.selectedService.Id,
-          customer_id: customerData.customer.Id,
+          customer_id: this.customer.Id,
           suite_id: this.selectedSuite.Id,
           rate_id: this.getDefaultRateForService(),
           start_date: this.selectedDates.start,
@@ -500,7 +548,7 @@ export default {
           options: this.selectedOptions
         }
         console.log('FRONTEND: Reservation payload:', reservationPayload)
-        
+
         const reservationResponse = await fetch('/intense_experience-api/create-reservation', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -520,8 +568,7 @@ export default {
         console.log('FRONTEND: Reservation created successfully:', this.reservation.Id)
         console.log('='.repeat(80))
 
-        // Go to payment step
-        this.currentStep = 7
+        // Stay on confirmation step - user will choose to pay or go home
 
       } catch (error) {
         console.error('FRONTEND: Error creating reservation:', error)
@@ -535,22 +582,26 @@ export default {
       if (this.currentStep === 1) {
         this.currentStep = 2
       } else if (this.currentStep === 2) {
+        this.currentStep = 3
+      } else if (this.currentStep === 3) {
         if (this.accessPoint === 'general') {
           await this.loadSuites()
-          this.currentStep = 3
+          this.currentStep = 4
         } else {
           this.loadProducts()
           this.calculatePricing()
-          this.currentStep = 4
+          this.currentStep = 5
         }
-      } else if (this.currentStep === 3) {
+      } else if (this.currentStep === 4) {
         this.loadProducts()
         this.calculatePricing()
-        this.currentStep = 4
-      } else if (this.currentStep === 4) {
         this.currentStep = 5
       } else if (this.currentStep === 5) {
-        // Reservation creation handled separately
+        await this.createReservation()
+        this.currentStep = 6
+      } else if (this.currentStep === 6) {
+        // Go to payment step
+        this.currentStep = 7
       } else {
         this.currentStep++
       }
@@ -897,14 +948,49 @@ h2 {
   color: #007bff;
 }
 
-.payment-note {
+.payment-choice {
+  margin-top: 30px;
+  text-align: center;
+}
+
+.payment-choice p {
   color: #666;
-  font-style: italic;
-  margin-top: 25px;
-  padding: 15px;
-  background: #fff3cd;
+  margin-bottom: 20px;
+  font-size: 16px;
+}
+
+.choice-buttons {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+.pay-now-btn, .home-btn {
+  padding: 12px 25px;
   border-radius: 6px;
-  border-left: 4px solid #ffc107;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  font-size: 16px;
+}
+
+.pay-now-btn {
+  background: #007bff;
+  color: white;
+}
+
+.pay-now-btn:hover {
+  background: #0056b3;
+}
+
+.home-btn {
+  background: #6c757d;
+  color: white;
+}
+
+.home-btn:hover {
+  background: #5a6268;
 }
 
 /* Responsive */
@@ -935,6 +1021,14 @@ h2 {
 
   .reservation-details {
     padding: 20px;
+  }
+
+  .choice-buttons {
+    flex-direction: column;
+  }
+
+  .pay-now-btn, .home-btn {
+    width: 100%;
   }
 }
 </style>
