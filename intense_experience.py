@@ -39,8 +39,8 @@ DAY_MIN_HOURS = 3
 DAY_MAX_HOURS = 6
 
 # Arrival and departure times for journee bookings
-ARRIVAL_TIMES = ['13:00', '14:00', '15:00', '16:00', '17:00']
-DEPARTURE_TIMES = ['14:00', '15:00', '16:00', '17:00', '18:00']
+ARRIVAL_TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
+DEPARTURE_TIMES = ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00']
 
 def make_mews_request(endpoint, payload):
     """Make a request to Mews API"""

@@ -144,6 +144,13 @@ export default {
     selectedDeparture() {
       this.emitTimeSelection()
     },
+    selectedDate: {
+      handler(newVal) {
+        console.log('Selected date changed:', newVal)
+        console.log('Date availability:', this.dateAvailability)
+      },
+      immediate: true
+    },
     dateAvailability: {
       handler(newVal) {
         console.log('Date availability updated:', newVal)
@@ -155,7 +162,8 @@ export default {
           this.selectedDeparture = ''
         }
       },
-      deep: true
+      deep: true,
+      immediate: true
     }
   },
   methods: {
@@ -222,7 +230,17 @@ export default {
     },
 
     isArrivalTimeDisabled(arrivalTime) {
-      if (this.bookingType !== 'day' || !this.dateAvailability || !this.dateAvailability.suite_availability) {
+      if (this.bookingType !== 'day') {
+        return false
+      }
+
+      if (!this.dateAvailability) {
+        console.log(`Arrival ${arrivalTime}: No dateAvailability`)
+        return false
+      }
+
+      if (!this.dateAvailability.suite_availability) {
+        console.log(`Arrival ${arrivalTime}: No suite_availability`)
         return false
       }
 
@@ -231,10 +249,12 @@ export default {
         const slots = this.dateAvailability.suite_availability[suiteId]
         const hasSlotWithThisArrival = slots.some(slot => slot.arrival === arrivalTime)
         if (hasSlotWithThisArrival) {
+          console.log(`Arrival ${arrivalTime}: ENABLED (available in suite ${suiteId.substring(0, 8)})`)
           return false // At least one slot available with this arrival time
         }
       }
 
+      console.log(`Arrival ${arrivalTime}: DISABLED (no slots available)`)
       return true // No slots available with this arrival time
     },
 

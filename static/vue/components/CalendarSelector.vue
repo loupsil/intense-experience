@@ -560,8 +560,21 @@ export default {
 
     getDateAvailability(date) {
       if (!date) return null
-      const dateStr = date.toISOString()
-      return this.dateAvailabilityCache[dateStr] || null
+      // Normalize to UTC midnight to match cache keys
+      const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+      const dateStr = utcDate.toISOString()
+      const availability = this.dateAvailabilityCache[dateStr] || null
+      
+      // Debug log
+      if (date.getMonth() === 11 && date.getDate() === 17) {
+        console.log('🔍 getDateAvailability for Dec 17:')
+        console.log('   Input date:', date)
+        console.log('   UTC dateStr:', dateStr)
+        console.log('   Availability:', availability)
+        console.log('   Cache keys:', Object.keys(this.dateAvailabilityCache))
+      }
+      
+      return availability
     }
   }
 }
