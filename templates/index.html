@@ -38,50 +38,6 @@
                         ></booking-widget>
                     </div>
                 </section>
-
-                <!-- Suite Showcase (for specific access points) -->
-                <section id="suites" class="suites-showcase">
-                    <div class="container">
-                        <h2>Nos Suites</h2>
-{% raw %}
-                        <!-- Loading State -->
-                        <div v-if="loading" style="text-align: center; padding: 40px;">
-                            <i class="fas fa-spinner fa-spin fa-3x"></i>
-                            <p style="margin-top: 20px;">Chargement des suites...</p>
-                        </div>
-                        
-                        <!-- Error State -->
-                        <div v-else-if="error" style="text-align: center; padding: 40px; color: #dc3545;">
-                            <i class="fas fa-exclamation-triangle fa-3x"></i>
-                            <p style="margin-top: 20px;">{{ error }}</p>
-                            <button @click="loadSuites" style="margin-top: 20px; padding: 10px 20px; cursor: pointer;">
-                                Réessayer
-                            </button>
-                        </div>
-                        
-                        <!-- Suites Grid -->
-                        <div v-else class="suites-grid">
-                            <div class="suite-preview" v-for="suite in featuredSuites" :key="suite.id">
-                                <div class="suite-image">
-                                    <img :src="suite.image" :alt="suite.name">
-                                    <div class="suite-overlay">
-                                        <button class="book-suite-btn" @click="bookSpecificSuite(suite)">
-                                            Réserver cette suite
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="suite-info">
-                                    <h3>{{ suite.name }}</h3>
-                                    <p>{{ suite.description }}</p>
-                                    <div class="suite-features">
-                                        <span class="feature"><i class="fas fa-users"></i> {{ suite.capacity }} pers.</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-{% endraw %}
-                    </div>
-                </section>
             </main>
         </div>
 

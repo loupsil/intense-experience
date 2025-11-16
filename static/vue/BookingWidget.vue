@@ -58,16 +58,10 @@
           :service="selectedService"
           :booking-type="bookingType"
           @date-selected="handleDateSelection"
+          @dates-confirmed="nextStep"
         />
         <div class="step-navigation">
           <button class="prev-btn" @click="prevStep">Retour</button>
-          <button
-            class="next-btn"
-            :disabled="!selectedDates.start || !selectedDates.end"
-            @click="nextStep"
-          >
-            Continuer
-          </button>
         </div>
       </div>
 
