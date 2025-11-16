@@ -103,9 +103,14 @@
             <span>{{ selectedSuite?.Names['fr-FR'] }}</span>
             <span>{{ pricing.total }}€</span>
           </div>
-          <div v-if="selectedOptions.length > 0" class="summary-item">
-            <span>Options</span>
-            <span>{{ pricing.options }}€</span>
+          <!-- Individual option lines -->
+          <div
+            v-for="option in selectedOptions"
+            :key="option.Id"
+            class="summary-item"
+          >
+            <span>{{ option.Names?.['fr-FR'] || option.Name }}</span>
+            <span>{{ getProductPrice(option) }}€</span>
           </div>
           <div class="summary-total">
             <strong>Total: {{ pricing.total + pricing.options }}€</strong>
@@ -262,6 +267,8 @@ export default {
       // JOURNEE service ID
       const JOURNEE_ID = '86fcc6a7-75ce-457a-a425-b3850108b6bf'
       this.bookingType = service.Id === JOURNEE_ID ? 'day' : 'night'
+      // Clear selected options when service changes to prevent invalid selections
+      this.selectedOptions = []
     },
 
     handleDateSelection(dates) {
@@ -379,9 +386,12 @@ export default {
         const response = await fetch('/intense_experience-api/products')
         const data = await response.json()
         if (data.status === 'success') {
-          // Load all products without filtering
-          this.availableProducts = data.products || []
-          console.log('Loaded products for options:', this.availableProducts.length)
+          // Filter products by selected service
+          const allProducts = data.products || []
+          this.availableProducts = allProducts.filter(product =>
+            product.ServiceId === this.selectedService.Id
+          )
+          console.log('Loaded products for service', this.selectedService.Id, ':', this.availableProducts.length)
         }
       } catch (error) {
         console.error('Error loading products:', error)
@@ -433,7 +443,7 @@ export default {
 
           // Calculate options pricing
           this.pricing.options = this.selectedOptions.reduce((sum, option) => {
-            return sum + (option.Amount?.Value || 0)
+            return sum + this.getProductPrice(option)
           }, 0)
         }
       } catch (error) {
@@ -587,6 +597,22 @@ export default {
       const startDate = new Date(start).toLocaleDateString('fr-FR')
       const endDate = new Date(end).toLocaleDateString('fr-FR')
       return `${startDate} - ${endDate}`
+    },
+
+    getProductPrice(product) {
+      // Extract price from product data (Mews API format)
+      if (product.Price && typeof product.Price.GrossValue === 'number') {
+        return product.Price.GrossValue
+      }
+
+      // Try pricing field as well
+      if (product.Pricing && product.Pricing.Value && typeof product.Pricing.Value.GrossValue === 'number') {
+        return product.Pricing.Value.GrossValue
+      }
+
+      // No price found - return error indicator
+      console.error('Price not found for product:', product.Name || product.Id)
+      return 'N/A'
     }
   }
 }

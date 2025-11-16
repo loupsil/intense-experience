@@ -63,18 +63,6 @@
         </div>
       </div>
     </div>
-
-    <div v-if="selectedSuite" class="selection-summary">
-      <h3>Suite sélectionnée</h3>
-      <div class="selected-suite-info">
-        <h4>{{ selectedSuite.Names['fr-FR'] }}</h4>
-        <p>{{ selectedSuite.Descriptions?.['fr-FR'] }}</p>
-        <div class="suite-highlights">
-          <span class="highlight">Capacité: {{ selectedSuite.Capacity }} personnes</span>
-          <span class="highlight">Prix de base: {{ getSuiteBasePrice(selectedSuite) }}€</span>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 

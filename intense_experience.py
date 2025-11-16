@@ -507,7 +507,14 @@ def create_reservation():
 
     # Add options/upsells if provided
     if options:
-        reservation_data["ProductOrders"] = options
+        # Transform options to the correct ProductOrders structure expected by Mews API
+        reservation_data["ProductOrders"] = [
+            {
+                "ProductId": option["Id"],
+                "Count": 1  # Default quantity of 1 for each selected product
+            }
+            for option in options
+        ]
         logger.info(f"Added {len(options)} product orders to reservation")
 
     payload = {

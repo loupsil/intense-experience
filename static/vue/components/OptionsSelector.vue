@@ -34,38 +34,7 @@
       </div>
     </div>
 
-    <div v-if="selectedOptions.length > 0" class="selected-options-summary">
-      <h4>Options sélectionnées</h4>
-      <div class="selected-list">
-        <div
-          v-for="option in selectedOptions"
-          :key="option.Id"
-          class="selected-option-item"
-        >
-          <span class="option-name">{{ option.Names?.['fr-FR'] || option.Name }}</span>
-          <span class="option-price">{{ getProductPrice(option) }}€</span>
-          <button class="remove-option" @click.stop="removeOption(option)">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-      </div>
 
-      <div class="options-total">
-        <strong>Total options: {{ calculateOptionsTotal() }}€</strong>
-      </div>
-    </div>
-
-    <div class="options-actions">
-      <button class="skip-options-btn" @click="skipOptions">
-        Passer les options
-      </button>
-      <button
-        class="continue-btn"
-        @click="confirmOptions"
-      >
-        Continuer avec {{ selectedOptions.length }} option(s)
-      </button>
-    </div>
   </div>
 </template>
 
@@ -110,14 +79,6 @@ export default {
       this.emitUpdate()
     },
 
-    removeOption(option) {
-      const index = this.localSelectedOptions.findIndex(opt => opt.Id === option.Id)
-      if (index > -1) {
-        this.localSelectedOptions.splice(index, 1)
-        this.emitUpdate()
-      }
-    },
-
     emitUpdate() {
       this.$emit('options-updated', [...this.localSelectedOptions])
     },
@@ -156,23 +117,6 @@ export default {
       } else {
         return 'Premium'
       }
-    },
-
-    calculateOptionsTotal() {
-      return this.localSelectedOptions.reduce((total, option) => {
-        return total + this.getProductPrice(option)
-      }, 0)
-    },
-
-    skipOptions() {
-      this.localSelectedOptions = []
-      this.emitUpdate()
-      this.$emit('options-confirmed', [])
-    },
-
-    confirmOptions() {
-      this.emitUpdate()
-      this.$emit('options-confirmed', [...this.localSelectedOptions])
     }
   }
 }
@@ -286,102 +230,6 @@ export default {
   color: #28a745;
 }
 
-.selected-options-summary {
-  background: #f8f9fa;
-  padding: 25px;
-  border-radius: 12px;
-  margin-bottom: 30px;
-}
-
-.selected-options-summary h4 {
-  margin: 0 0 20px 0;
-  color: #333;
-}
-
-.selected-list {
-  margin-bottom: 20px;
-}
-
-.selected-option-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #e0e0e0;
-}
-
-.option-name {
-  flex: 1;
-  color: #333;
-}
-
-.selected-option-item .option-price {
-  font-weight: bold;
-  color: #007bff;
-  margin-right: 15px;
-}
-
-.remove-option {
-  background: #dc3545;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.3s ease;
-}
-
-.remove-option:hover {
-  background: #c82333;
-}
-
-.options-total {
-  text-align: right;
-  font-size: 18px;
-  color: #333;
-  padding-top: 15px;
-  border-top: 2px solid #007bff;
-}
-
-.options-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.skip-options-btn, .continue-btn {
-  flex: 1;
-  padding: 15px;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.skip-options-btn {
-  background: #6c757d;
-  color: white;
-  border: none;
-}
-
-.skip-options-btn:hover {
-  background: #5a6268;
-}
-
-.continue-btn {
-  background: #28a745;
-  color: white;
-  border: none;
-}
-
-.continue-btn:hover {
-  background: #218838;
-}
 
 /* Responsive */
 @media (max-width: 768px) {
