@@ -5,6 +5,8 @@ import logging
 import requests
 from datetime import datetime, timedelta
 import uuid
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configure logging
 logging.basicConfig(
@@ -138,6 +140,188 @@ def get_suites():
         return jsonify({"suites": suites, "status": "success"})
     return jsonify({"error": "Failed to fetch suites", "status": "error"}), 500
 
+@intense_experience_bp.route('/intense_experience-api/bulk-availability-nuitee', methods=['POST'])
+def check_bulk_availability_nuitee():
+    """Check availability for multiple dates displayed in calendar, chunked into 4-day periods"""
+    data = request.json
+    service_id = data.get('service_id')
+    dates = data.get('dates')  # List of ISO date strings
+    booking_type = data.get('booking_type', 'day')  # 'day' or 'night'
+
+    logger.info("=" * 80)
+    logger.info("BULK AVAILABILITY CHECK - Starting")
+    logger.info("=" * 80)
+    logger.info(f"Service ID: {service_id}")
+    logger.info(f"Number of dates to check: {len(dates) if dates else 0}")
+    logger.info(f"Booking Type: {booking_type}")
+    logger.info(f"Cleaning Buffer Hours: {CLEANING_BUFFER_HOURS}")
+
+    if not all([service_id, dates]) or len(dates) == 0:
+        logger.error("Missing required parameters")
+        return jsonify({"error": "Missing required parameters", "status": "error"}), 400
+
+    # Only apply bulk availability logic for NUITEE service
+    if service_id != NIGHT_SERVICE_ID:
+        logger.info(f"Bulk availability not supported for service {service_id}, only for NUITEE ({NIGHT_SERVICE_ID})")
+        return jsonify({"error": "Bulk availability only supported for night bookings", "status": "error"}), 400
+
+    # Get all suite categories for this service
+    payload = {
+        "EnterpriseIds": [ENTERPRISE_ID],
+        "ServiceIds": [service_id],
+        "IncludeDefault": False,
+        "Limitation": {"Count": 100}
+    }
+
+    suites_result = make_mews_request("resourceCategories/getAll", payload)
+    if not suites_result or "ResourceCategories" not in suites_result:
+        logger.error("Failed to fetch suites")
+        return jsonify({"error": "Failed to fetch suites", "status": "error"}), 500
+
+    # Filter to only show suites (not buildings/floors)
+    all_suites = [cat for cat in suites_result["ResourceCategories"]
+                  if cat.get("Type") in ["Suite", "Room"] and cat.get("IsActive")]
+    suite_ids = [suite["Id"] for suite in all_suites]
+
+    logger.info(f"Found {len(suite_ids)} active suites: {suite_ids}")
+
+    # Sort dates to ensure proper chunking
+    sorted_dates = sorted(set(dates))  # Remove duplicates and sort
+    availability_results = {}
+
+    # Process dates in chunks with parallel execution to speed up fetching
+    CHUNK_SIZE_DAYS = 4  # Mews API limitation: max 4 days per chunk
+    MAX_HOURS_PER_CHUNK = 96
+    MAX_CONCURRENT_REQUESTS = 15
+
+    def process_chunk(chunk_index, chunk_dates):
+        """Process a single chunk of dates - returns availability data for all dates in chunk"""
+        chunk_start = datetime.fromisoformat(chunk_dates[0].replace('Z', '+00:00'))
+        chunk_end = datetime.fromisoformat(chunk_dates[-1].replace('Z', '+00:00'))
+
+        # Add one day to include the end date fully
+        chunk_end = chunk_end + timedelta(days=1)
+
+        # Calculate total hours for this chunk
+        chunk_hours = (chunk_end - chunk_start).total_seconds() / 3600
+        if chunk_hours > MAX_HOURS_PER_CHUNK:
+            logger.warning(f"Chunk hours ({chunk_hours}) exceeds limit ({MAX_HOURS_PER_CHUNK}), truncating")
+            chunk_end = chunk_start + timedelta(hours=MAX_HOURS_PER_CHUNK)
+
+        # Add cleaning buffers based on booking type
+        if booking_type == 'night':
+            # For nights: add buffer before and after the entire chunk
+            buffered_start = (chunk_start - timedelta(hours=CLEANING_BUFFER_HOURS)).isoformat()
+            buffered_end = (chunk_end + timedelta(hours=CLEANING_BUFFER_HOURS)).isoformat()
+        else:
+            # For days: add buffer after
+            buffered_start = chunk_start.isoformat()
+            buffered_end = (chunk_end + timedelta(hours=CLEANING_BUFFER_HOURS)).isoformat()
+
+        logger.info(f"Processing chunk {chunk_index + 1}: {len(chunk_dates)} dates")
+        logger.info(f"Date range: {chunk_start.date()} to {chunk_end.date()}")
+        logger.info(f"Buffered range: {buffered_start} to {buffered_end}")
+
+        payload = {
+            "Client": "Intense Experience Booking",
+            "StartUtc": buffered_start,
+            "EndUtc": buffered_end
+        }
+
+        result = make_mews_request("reservations/getAll", payload)
+        if result is None:
+            logger.error(f"Failed to get reservations for chunk starting {chunk_start.date()}")
+            return {}
+
+        chunk_availability = {}
+
+        if "Reservations" in result:
+            reservations = result["Reservations"]
+            logger.info(f"Found {len(reservations)} reservations in chunk {chunk_index + 1}")
+
+            # Group reservations by date
+            reservations_by_date = {}
+            for date_str in chunk_dates:
+                date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
+                reservations_by_date[date_str] = []
+
+                # Filter reservations that overlap with this specific date
+                for reservation in reservations:
+                    res_start = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
+                    res_end = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+
+                    # Check if reservation overlaps with this date
+                    if (res_start.date() <= date_obj < res_end.date() or
+                        res_start.date() == date_obj or
+                        (res_start.date() < date_obj and res_end.date() > date_obj)):
+                        reservations_by_date[date_str].append(reservation)
+
+            # Check availability for each date in this chunk
+            for date_str in chunk_dates:
+                date_reservations = reservations_by_date[date_str]
+                booked_suites = set()
+
+                # Find which suites are booked on this date
+                for reservation in date_reservations:
+                    res_requested_category = reservation.get('RequestedCategoryId')
+                    if res_requested_category in suite_ids:
+                        booked_suites.add(res_requested_category)
+
+                # A date is available if at least one suite is free
+                available_suites = len(suite_ids) - len(booked_suites)
+                is_available = available_suites > 0
+
+                chunk_availability[date_str] = {
+                    "available": is_available,
+                    "total_suites": len(suite_ids),
+                    "booked_suites": len(booked_suites),
+                    "available_suites": available_suites,
+                    "booked_suite_ids": list(booked_suites)
+                }
+
+                logger.info(f"Date {date_str}: {available_suites}/{len(suite_ids)} suites available - {'AVAILABLE' if is_available else 'FULLY BOOKED'}")
+
+        return chunk_availability
+
+    # Create chunks
+    chunks = []
+    for i in range(0, len(sorted_dates), CHUNK_SIZE_DAYS):
+        chunk_dates = sorted_dates[i:i + CHUNK_SIZE_DAYS]
+        if chunk_dates:
+            chunks.append((i // CHUNK_SIZE_DAYS, chunk_dates))
+
+    logger.info(f"Created {len(chunks)} chunks to process with up to {MAX_CONCURRENT_REQUESTS} concurrent requests")
+
+    # Process chunks in parallel
+    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_REQUESTS) as executor:
+        # Submit all chunk processing tasks
+        future_to_chunk = {
+            executor.submit(process_chunk, chunk_index, chunk_dates): (chunk_index, chunk_dates)
+            for chunk_index, chunk_dates in chunks
+        }
+
+        # Process results as they complete
+        for future in as_completed(future_to_chunk):
+            chunk_index, chunk_dates = future_to_chunk[future]
+            try:
+                chunk_availability = future.result()
+                availability_results.update(chunk_availability)
+                logger.info(f"Completed processing chunk {chunk_index + 1}")
+            except Exception as exc:
+                logger.error(f"Chunk {chunk_index + 1} generated an exception: {exc}")
+                # Continue with other chunks even if one fails
+
+    logger.info("=" * 80)
+    logger.info("BULK AVAILABILITY CHECK - Complete")
+    logger.info("=" * 80)
+    logger.info(f"Processed {len(availability_results)} dates")
+
+    return jsonify({
+        "availability": availability_results,
+        "status": "success"
+    })
+
+
 @intense_experience_bp.route('/intense_experience-api/availability', methods=['POST'])
 def check_availability():
     """Check availability for a date range with cleaning buffers"""
@@ -229,8 +413,8 @@ def check_availability():
                 # Check specific suite availability
                 # The suite_id parameter is a ResourceCategory ID (the suite type/category)
                 # We check if this reservation uses that category by comparing RequestedCategoryId
-                # 
-                # Note: In Mews, a ResourceCategory (suite type) may have multiple physical 
+                #
+                # Note: In Mews, a ResourceCategory (suite type) may have multiple physical
                 # Resources (rooms) assigned to it. This check tells us if ANY room of this
                 # suite type is booked. The AssignedResourceId shows WHICH specific physical
                 # room is being used.
@@ -238,7 +422,7 @@ def check_availability():
                 # For more sophisticated availability (checking if ALL rooms of a type are booked),
                 # we would need to fetch Resources and their category assignments.
                 logger.info(f"Checking if reservation conflicts with suite category {suite_id}")
-                
+
                 category_match = res_requested_category == suite_id
                 logger.info(f"RequestedCategoryId matches suite_id: {category_match}")
 

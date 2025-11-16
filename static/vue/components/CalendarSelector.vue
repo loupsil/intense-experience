@@ -23,6 +23,11 @@
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
                 </div>
                 <div class="calendar-body">
+                  <!-- Loading overlay for current month -->
+                  <div v-if="availabilityLoading" class="calendar-loading-overlay">
+                    <div class="calendar-spinner"></div>
+                  </div>
+
                   <div
                     v-for="date in getDaysInMonth(currentMonth)"
                     :key="date.toISOString()"
@@ -32,9 +37,10 @@
                       'available': isDateAvailable(date),
                       'unavailable': !isDateAvailable(date),
                       'past': isDateInPast(date),
-                      'other-month': !isDateInCurrentMonth(date, currentMonth)
+                      'other-month': !isDateInCurrentMonth(date, currentMonth),
+                      'loading': availabilityLoading
                     }"
-                    @click="selectDate(date)"
+                    @click="!availabilityLoading && selectDate(date)"
                   >
                     <span class="date-number">{{ date.getDate() }}</span>
                   </div>
@@ -48,6 +54,11 @@
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
                 </div>
                 <div class="calendar-body">
+                  <!-- Loading overlay for next month -->
+                  <div v-if="availabilityLoading" class="calendar-loading-overlay">
+                    <div class="calendar-spinner"></div>
+                  </div>
+
                   <div
                     v-for="date in getDaysInMonth(nextMonth)"
                     :key="date.toISOString()"
@@ -57,9 +68,10 @@
                       'available': isDateAvailable(date),
                       'unavailable': !isDateAvailable(date),
                       'past': isDateInPast(date),
-                      'other-month': !isDateInCurrentMonth(date, nextMonth)
+                      'other-month': !isDateInCurrentMonth(date, nextMonth),
+                      'loading': availabilityLoading
                     }"
-                    @click="selectDate(date)"
+                    @click="!availabilityLoading && selectDate(date)"
                   >
                     <span class="date-number">{{ date.getDate() }}</span>
                   </div>
@@ -87,6 +99,11 @@
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
                 </div>
                 <div class="calendar-body">
+                  <!-- Loading overlay for current month -->
+                  <div v-if="availabilityLoading" class="calendar-loading-overlay">
+                    <div class="calendar-spinner"></div>
+                  </div>
+
                   <div
                     v-for="date in getDaysInMonth(currentMonth)"
                     :key="date.toISOString()"
@@ -98,9 +115,10 @@
                       'available': isDateAvailable(date),
                       'unavailable': !isDateAvailable(date),
                       'past': isDateInPast(date),
-                      'other-month': !isDateInCurrentMonth(date, currentMonth)
+                      'other-month': !isDateInCurrentMonth(date, currentMonth),
+                      'loading': availabilityLoading
                     }"
-                    @click="selectNightDate(date)"
+                    @click="!availabilityLoading && selectNightDate(date)"
                   >
                     <span class="date-number">{{ date.getDate() }}</span>
                   </div>
@@ -114,6 +132,11 @@
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
                 </div>
                 <div class="calendar-body">
+                  <!-- Loading overlay for next month -->
+                  <div v-if="availabilityLoading" class="calendar-loading-overlay">
+                    <div class="calendar-spinner"></div>
+                  </div>
+
                   <div
                     v-for="date in getDaysInMonth(nextMonth)"
                     :key="date.toISOString()"
@@ -125,9 +148,10 @@
                       'available': isDateAvailable(date),
                       'unavailable': !isDateAvailable(date),
                       'past': isDateInPast(date),
-                      'other-month': !isDateInCurrentMonth(date, nextMonth)
+                      'other-month': !isDateInCurrentMonth(date, nextMonth),
+                      'loading': availabilityLoading
                     }"
-                    @click="selectNightDate(date)"
+                    @click="!availabilityLoading && selectNightDate(date)"
                   >
                     <span class="date-number">{{ date.getDate() }}</span>
                   </div>
@@ -153,12 +177,12 @@
     <div class="calendar-footer">
       <div class="legend">
         <div class="legend-item">
-          <span class="available-dot"></span>
-          <span>Disponible</span>
+          <div class="legend-color available-color"></div>
+          <span>Au moins une suite disponible</span>
         </div>
         <div class="legend-item">
-          <span class="unavailable-dot"></span>
-          <span>Indisponible</span>
+          <div class="legend-color unavailable-color"></div>
+          <span>Toutes les suites réservées</span>
         </div>
       </div>
     </div>
@@ -189,6 +213,8 @@ export default {
       checkInDate: '',
       checkOutDate: '',
       availableDates: [],
+      dateAvailabilityCache: {}, // Cache for availability data
+      availabilityLoading: false,
       minDate: new Date().toISOString().split('T')[0],
       currentMonth: new Date(),
       weekDays: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
@@ -220,23 +246,127 @@ export default {
       }
     }
   },
-  mounted() {
+  async mounted() {
     // Calendar is now always displayed for both day and night bookings
+    // Fetch availability for initially displayed dates
+    await this.fetchAvailabilityForDisplayedDates()
   },
   methods: {
 
-    async checkDateAvailability(date) {
-      // This would call the backend to check availability
-      // For now, we'll simulate some unavailable dates
-      const dayOfWeek = date.getDay()
-      // Simulate weekends being more booked
-      return Math.random() > (dayOfWeek === 0 || dayOfWeek === 6 ? 0.3 : 0.1)
+    async fetchBulkAvailability(dates) {
+      if (!this.service || !dates || dates.length === 0) return
+
+      this.availabilityLoading = true
+
+      // Only use bulk availability API for night bookings
+      if (this.selectedBookingType !== 'night') {
+        console.log('Bulk availability only for night bookings, assuming available for:', this.selectedBookingType)
+        // For non-night bookings, assume all dates are available
+        dates.forEach(dateStr => {
+          this.dateAvailabilityCache[dateStr] = {
+            available: true,
+            total_suites: 1,
+            booked_suites: 0,
+            available_suites: 1,
+            booked_suite_ids: []
+          }
+        })
+        this.availabilityLoading = false
+        return
+      }
+
+      try {
+        const response = await fetch('/intense_experience-api/bulk-availability-nuitee', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            service_id: this.service.Id,
+            dates: dates,
+            booking_type: this.selectedBookingType
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const data = await response.json()
+        if (data.status === 'success' && data.availability) {
+          // Update cache with new availability data
+          Object.assign(this.dateAvailabilityCache, data.availability)
+          console.log('Availability cache updated:', this.dateAvailabilityCache)
+        } else {
+          console.warn('Bulk availability failed:', data.error)
+          // Fall back to assuming dates are available
+          dates.forEach(dateStr => {
+            this.dateAvailabilityCache[dateStr] = {
+              available: true,
+              total_suites: 1,
+              booked_suites: 0,
+              available_suites: 1,
+              booked_suite_ids: []
+            }
+          })
+        }
+      } catch (error) {
+        console.error('Failed to fetch availability:', error)
+        // On error, assume dates are available
+        dates.forEach(dateStr => {
+          this.dateAvailabilityCache[dateStr] = {
+            available: true,
+            total_suites: 1,
+            booked_suites: 0,
+            available_suites: 1,
+            booked_suite_ids: []
+          }
+        })
+      } finally {
+        this.availabilityLoading = false
+      }
+    },
+
+    async fetchAvailabilityForDisplayedDates() {
+      // Get all dates currently displayed in the calendar
+      const displayedDates = []
+      const currentMonthDates = this.getDaysInMonth(this.currentMonth)
+      const nextMonthDates = this.getDaysInMonth(this.nextMonth)
+
+      // Collect all visible dates
+      currentMonthDates.forEach(date => {
+        if (!this.isDateInPast(date)) {
+          displayedDates.push(date.toISOString())
+        }
+      })
+      nextMonthDates.forEach(date => {
+        if (!this.isDateInPast(date)) {
+          displayedDates.push(date.toISOString())
+        }
+      })
+
+      // Filter out dates we already have in cache
+      const uncachedDates = displayedDates.filter(dateStr => !this.dateAvailabilityCache[dateStr])
+
+      if (uncachedDates.length > 0) {
+        console.log('Fetching availability for', uncachedDates.length, 'dates')
+        await this.fetchBulkAvailability(uncachedDates)
+      }
     },
 
     isDateAvailable(date) {
-      // Simplified availability check - in real implementation,
-      // this would check against backend data
-      return true // Assume all dates are available for demo
+      if (this.isDateInPast(date)) return false
+
+      const dateStr = date.toISOString()
+      const availability = this.dateAvailabilityCache[dateStr]
+
+      if (!availability) {
+        // If we don't have availability data yet, assume available while loading
+        return true
+      }
+
+      // Date is available if at least one suite is free
+      return availability.available
     },
 
     isDateSelected(date) {
@@ -298,14 +428,18 @@ export default {
       this.selectionMode = 'start'
     },
 
-    previousMonth() {
+    async previousMonth() {
       this.currentMonth.setMonth(this.currentMonth.getMonth() - 1)
       this.currentMonth = new Date(this.currentMonth)
+      // Fetch availability for newly displayed dates
+      await this.fetchAvailabilityForDisplayedDates()
     },
 
-    nextMonth() {
+    async nextMonth() {
       this.currentMonth.setMonth(this.currentMonth.getMonth() + 1)
       this.currentMonth = new Date(this.currentMonth)
+      // Fetch availability for newly displayed dates
+      await this.fetchAvailabilityForDisplayedDates()
     },
 
     getDaysInMonth(month) {
@@ -503,19 +637,22 @@ export default {
   transform: translateX(-50%);
 }
 
-.available-dot, .unavailable-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
   display: inline-block;
+  margin-right: 8px;
 }
 
-.available-dot {
-  background: #28a745;
+.available-color {
+  background: #d4edda;
+  border: 2px solid #28a745;
 }
 
-.unavailable-dot {
-  background: #dc3545;
+.unavailable-color {
+  background: #f8d7da;
+  border: 2px solid #dc3545;
 }
 
 /* Calendar Navigation */
@@ -596,6 +733,7 @@ export default {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 4px;
+  position: relative;
 }
 
 .calendar-cell {
@@ -655,8 +793,48 @@ export default {
 }
 
 .calendar-cell.available {
-  background: #f8fff9;
-  color: #333;
+  background: #d4edda; /* Light green background */
+  color: #155724; /* Dark green text */
+  border-color: #c3e6cb; /* Green border */
+}
+
+.calendar-cell.unavailable {
+  background: #f8d7da; /* Light red background */
+  color: #721c24; /* Dark red text */
+  border-color: #f5c6cb; /* Red border */
+}
+
+.calendar-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border-radius: 6px;
+}
+
+.calendar-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #007bff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.calendar-cell.loading {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .date-number {
