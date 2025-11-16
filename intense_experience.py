@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 import logging
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -33,6 +33,14 @@ NIGHT_SERVICE_ID = "7ba0b732-93cc-477a-861d-b3850108b730"  # NUITEE
 
 # Default cleaning buffer in hours
 CLEANING_BUFFER_HOURS = 1
+
+# Booking duration limits for journee bookings
+DAY_MIN_HOURS = 3
+DAY_MAX_HOURS = 6
+
+# Arrival and departure times for journee bookings
+ARRIVAL_TIMES = ['13:00', '14:00', '15:00', '16:00', '17:00']
+DEPARTURE_TIMES = ['14:00', '15:00', '16:00', '17:00', '18:00']
 
 def make_mews_request(endpoint, payload):
     """Make a request to Mews API"""
@@ -139,6 +147,255 @@ def get_suites():
                  if cat.get("Type") in ["Suite", "Room"] and cat.get("IsActive")]
         return jsonify({"suites": suites, "status": "success"})
     return jsonify({"error": "Failed to fetch suites", "status": "error"}), 500
+
+@intense_experience_bp.route('/intense_experience-api/bulk-availability-journee', methods=['POST'])
+def check_bulk_availability_journee():
+    """Check availability for day bookings (journée) - shows date as unavailable if no valid time slots remain"""
+    data = request.json
+    service_id = data.get('service_id')
+    dates = data.get('dates')  # List of ISO date strings
+    
+    logger.info("=" * 80)
+    logger.info("BULK AVAILABILITY CHECK (JOURNEE) - Starting")
+    logger.info("=" * 80)
+    logger.info(f"Service ID: {service_id}")
+    logger.info(f"Number of dates to check: {len(dates) if dates else 0}")
+    logger.info(f"Day Min Hours: {DAY_MIN_HOURS}")
+    logger.info(f"Day Max Hours: {DAY_MAX_HOURS}")
+    logger.info(f"Cleaning Buffer Hours: {CLEANING_BUFFER_HOURS}")
+    
+    if not all([service_id, dates]) or len(dates) == 0:
+        logger.error("Missing required parameters")
+        return jsonify({"error": "Missing required parameters", "status": "error"}), 400
+    
+    # Only apply bulk availability logic for DAY service
+    if service_id != DAY_SERVICE_ID:
+        logger.info(f"Bulk availability not supported for service {service_id}, only for JOURNEE ({DAY_SERVICE_ID})")
+        return jsonify({"error": "Bulk availability only supported for day bookings", "status": "error"}), 400
+    
+    # Get all suite categories for this service
+    payload = {
+        "EnterpriseIds": [ENTERPRISE_ID],
+        "ServiceIds": [service_id],
+        "IncludeDefault": False,
+        "Limitation": {"Count": 100}
+    }
+    
+    suites_result = make_mews_request("resourceCategories/getAll", payload)
+    if not suites_result or "ResourceCategories" not in suites_result:
+        logger.error("Failed to fetch suites")
+        return jsonify({"error": "Failed to fetch suites", "status": "error"}), 500
+    
+    all_suites = [cat for cat in suites_result["ResourceCategories"]
+                  if cat.get("Type") in ["Suite", "Room"] and cat.get("IsActive")]
+    suite_ids = [suite["Id"] for suite in all_suites]
+    
+    logger.info(f"Found {len(suite_ids)} active suites: {suite_ids}")
+    
+    # Sort dates
+    sorted_dates = sorted(set(dates))
+    availability_results = {}
+    
+    # Process dates in chunks
+    CHUNK_SIZE_DAYS = 4
+    MAX_HOURS_PER_CHUNK = 96
+    MAX_CONCURRENT_REQUESTS = 15
+    
+    def process_chunk(chunk_index, chunk_dates):
+        """Process a single chunk of dates for day bookings"""
+        chunk_start = datetime.fromisoformat(chunk_dates[0].replace('Z', '+00:00'))
+        chunk_end = datetime.fromisoformat(chunk_dates[-1].replace('Z', '+00:00'))
+        chunk_end = chunk_end + timedelta(days=1)
+        
+        chunk_hours = (chunk_end - chunk_start).total_seconds() / 3600
+        if chunk_hours > MAX_HOURS_PER_CHUNK:
+            chunk_end = chunk_start + timedelta(hours=MAX_HOURS_PER_CHUNK)
+        
+        # For day bookings: add buffer after
+        buffered_start = chunk_start.isoformat()
+        buffered_end = (chunk_end + timedelta(hours=CLEANING_BUFFER_HOURS)).isoformat()
+        
+        logger.info(f"Processing chunk {chunk_index + 1}: {len(chunk_dates)} dates")
+        logger.info(f"Date range: {chunk_start.date()} to {chunk_end.date()}")
+        
+        payload = {
+            "Client": "Intense Experience Booking",
+            "StartUtc": buffered_start,
+            "EndUtc": buffered_end
+        }
+        
+        result = make_mews_request("reservations/getAll", payload)
+        if result is None:
+            logger.error(f"Failed to get reservations for chunk starting {chunk_start.date()}")
+            return {}
+        
+        chunk_availability = {}
+        
+        # Get reservations (empty list if no reservations found)
+        reservations = result.get("Reservations", [])
+        logger.info(f"Found {len(reservations)} reservations in chunk {chunk_index + 1}")
+        
+        # Check each date (process all dates, even if no reservations)
+        for date_str in chunk_dates:
+            date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
+            
+            # For each suite, check which time slots are available
+            suite_availability = {}
+            
+            for suite_id in suite_ids:
+                # Generate all possible time slot combinations
+                available_slots = []
+                
+                for arrival_time in ARRIVAL_TIMES:
+                    for departure_time in DEPARTURE_TIMES:
+                        # Calculate duration
+                        arr_hour = int(arrival_time.split(':')[0])
+                        dep_hour = int(departure_time.split(':')[0])
+                        duration = dep_hour - arr_hour
+                        
+                        # Check if duration is within limits
+                        if duration < DAY_MIN_HOURS or duration > DAY_MAX_HOURS:
+                            continue
+                        
+                        # Create datetime objects for this slot (timezone-aware to match reservations)
+                        slot_start = datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()).replace(tzinfo=timezone.utc)
+                        slot_end = datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()).replace(tzinfo=timezone.utc)
+                        slot_end_buffered = slot_end + timedelta(hours=CLEANING_BUFFER_HOURS)
+                        
+                        # Check if this slot conflicts with any reservation
+                        is_available = True
+                        for reservation in reservations:
+                            if reservation.get('RequestedCategoryId') != suite_id:
+                                continue
+                            
+                            res_start = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
+                            res_end = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+                            
+                            # Check for overlap (including buffer)
+                            if not (slot_end_buffered <= res_start or slot_start >= res_end):
+                                is_available = False
+                                break
+                        
+                        if is_available:
+                            available_slots.append({
+                                'arrival': arrival_time,
+                                'departure': departure_time,
+                                'duration': duration
+                            })
+                
+                suite_availability[suite_id] = available_slots
+            
+            # Date is available if at least one suite has at least one available slot
+            has_available_slot = any(len(slots) > 0 for slots in suite_availability.values())
+            total_available_slots = sum(len(slots) for slots in suite_availability.values())
+            
+            chunk_availability[date_str] = {
+                "available": has_available_slot,
+                "total_suites": len(suite_ids),
+                "suite_availability": suite_availability,
+                "total_available_slots": total_available_slots
+            }
+            
+            # Log availability decision for every date
+            logger.info(f"📅 Date {date_obj.strftime('%Y-%m-%d')} - {'✅ AVAILABLE' if has_available_slot else '❌ UNAVAILABLE'}")
+            logger.info(f"   Total suites checked: {len(suite_ids)}")
+            logger.info(f"   Total available time slots: {total_available_slots}")
+            
+            # Show suite-level breakdown
+            for suite_id, slots in suite_availability.items():
+                suite_short = suite_id[:8] if len(suite_id) > 8 else suite_id
+                if len(slots) > 0:
+                    logger.info(f"   ✓ Suite {suite_short}: {len(slots)} available slots")
+                else:
+                    logger.info(f"   ✗ Suite {suite_short}: 0 available slots (fully booked)")
+            
+            logger.info(f"   → Decision: {'Date marked AVAILABLE' if has_available_slot else 'Date marked UNAVAILABLE'}")
+            logger.info("")  # Empty line for readability
+            
+            # Only provide detailed conflict analysis when date is NOT available
+            if not has_available_slot:
+                logger.warning(f"🔍 DETAILED CONFLICT ANALYSIS for {date_obj.strftime('%Y-%m-%d')}:")
+                
+                # Explain why each suite has no available slots
+                for suite_id, slots in suite_availability.items():
+                    if len(slots) == 0:
+                        suite_short = suite_id[:8] if len(suite_id) > 8 else suite_id
+                        logger.warning(f"   Suite {suite_short}: Analyzing blocked time slots...")
+                        
+                        # Check which time slots are blocked and why
+                        blocked_slots = []
+                        for arrival_time in ARRIVAL_TIMES:
+                            for departure_time in DEPARTURE_TIMES:
+                                arr_hour = int(arrival_time.split(':')[0])
+                                dep_hour = int(departure_time.split(':')[0])
+                                duration = dep_hour - arr_hour
+                                
+                                if duration < DAY_MIN_HOURS or duration > DAY_MAX_HOURS:
+                                    continue
+                                
+                                slot_start = datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()).replace(tzinfo=timezone.utc)
+                                slot_end = datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()).replace(tzinfo=timezone.utc)
+                                slot_end_buffered = slot_end + timedelta(hours=CLEANING_BUFFER_HOURS)
+                                
+                                # Find conflicting reservation
+                                for reservation in reservations:
+                                    if reservation.get('RequestedCategoryId') != suite_id:
+                                        continue
+                                    
+                                    res_start = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
+                                    res_end = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+                                    
+                                    if not (slot_end_buffered <= res_start or slot_start >= res_end):
+                                        blocked_slots.append({
+                                            'slot': f"{arrival_time}-{departure_time}",
+                                            'res_id': reservation.get('Id', 'unknown')[:8],
+                                            'res_time': f"{res_start.strftime('%Y-%m-%d %H:%M')}-{res_end.strftime('%H:%M')}"
+                                        })
+                                        break
+                        
+                        if blocked_slots:
+                            logger.warning(f"      {len(blocked_slots)} time slots blocked by reservations:")
+                            for blocked in blocked_slots[:3]:  # Show first 3 conflicts
+                                logger.warning(f"        ✗ {blocked['slot']} blocked by reservation {blocked['res_id']} ({blocked['res_time']})")
+                            if len(blocked_slots) > 3:
+                                logger.warning(f"        ... and {len(blocked_slots) - 3} more blocked slots")
+        
+        return chunk_availability
+    
+    # Create chunks
+    chunks = []
+    for i in range(0, len(sorted_dates), CHUNK_SIZE_DAYS):
+        chunk_dates = sorted_dates[i:i + CHUNK_SIZE_DAYS]
+        if chunk_dates:
+            chunks.append((i // CHUNK_SIZE_DAYS, chunk_dates))
+    
+    logger.info(f"Created {len(chunks)} chunks to process with up to {MAX_CONCURRENT_REQUESTS} concurrent requests")
+    
+    # Process chunks in parallel
+    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_REQUESTS) as executor:
+        future_to_chunk = {
+            executor.submit(process_chunk, chunk_index, chunk_dates): (chunk_index, chunk_dates)
+            for chunk_index, chunk_dates in chunks
+        }
+        
+        for future in as_completed(future_to_chunk):
+            chunk_index, chunk_dates = future_to_chunk[future]
+            try:
+                chunk_availability = future.result()
+                availability_results.update(chunk_availability)
+                logger.info(f"Completed processing chunk {chunk_index + 1}")
+            except Exception as exc:
+                logger.error(f"Chunk {chunk_index + 1} generated an exception: {exc}")
+    
+    logger.info("=" * 80)
+    logger.info("BULK AVAILABILITY CHECK (JOURNEE) - Complete")
+    logger.info("=" * 80)
+    logger.info(f"Processed {len(availability_results)} dates")
+    
+    return jsonify({
+        "availability": availability_results,
+        "status": "success"
+    })
 
 @intense_experience_bp.route('/intense_experience-api/bulk-availability-nuitee', methods=['POST'])
 def check_bulk_availability_nuitee():
@@ -798,10 +1055,16 @@ def get_payment_request_status(payment_request_id):
         return jsonify({"error": "Payment request not found", "status": "error"}), 404
 
 
-@intense_experience_bp.route('/intense_experience-api/test', methods=['GET'])
-def dummy_route():
-    """Dummy route for testing purposes"""
-    return jsonify({'message': 'This is a dummy route', 'status': 'success'})
-
-
+@intense_experience_bp.route('/intense_experience-api/booking-limits', methods=['GET'])
+def get_booking_limits():
+    """Get booking duration limits and available times"""
+    return jsonify({
+        'booking_limits': {
+            'day_min_hours': DAY_MIN_HOURS,
+            'day_max_hours': DAY_MAX_HOURS
+        },
+        'arrival_times': ARRIVAL_TIMES,
+        'departure_times': DEPARTURE_TIMES,
+        'status': 'success'
+    })
 

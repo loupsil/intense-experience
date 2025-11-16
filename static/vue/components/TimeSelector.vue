@@ -12,23 +12,41 @@
             <div class="detail-label">ARRIVAL</div>
             <select v-model="selectedArrival" class="time-select">
               <option value="">Select</option>
-              <option v-for="time in arrivalTimes" :key="time" :value="time">{{ time }}</option>
+              <option 
+                v-for="time in arrivalTimes" 
+                :key="time" 
+                :value="time"
+                :disabled="isArrivalTimeDisabled(time)"
+              >
+                {{ time }}{{ isArrivalTimeDisabled(time) ? ' (No slots available)' : '' }}
+              </option>
             </select>
           </div>
           <div class="detail-row">
             <div class="detail-label">DEPARTURE</div>
             <select v-model="selectedDeparture" class="time-select">
               <option value="">Select</option>
-              <option v-for="time in departureTimes" :key="time" :value="time">{{ time }}</option>
+              <option 
+                v-for="time in departureTimes" 
+                :key="time" 
+                :value="time"
+                :disabled="isDepartureTimeDisabled(time)"
+              >
+                {{ time }}{{ isDepartureTimeDisabled(time) ? ' (No slots available)' : '' }}
+              </option>
             </select>
           </div>
+        </div>
+
+        <div v-if="validationMessage" class="validation-message">
+          {{ validationMessage }}
         </div>
 
         <button class="book-btn" :disabled="!canBook" @click="bookSuite">BOOK A SUITE</button>
         <div class="no-charge-text">You won't be charget yet</div>
         <!-- Debug info -->
         <div style="font-size: 10px; color: #666; margin-top: 10px;">
-          Debug: Date: {{ !!selectedDate }} | Arrival: {{ !!selectedArrival }} ({{ selectedArrival }}) | Departure: {{ !!selectedDeparture }} ({{ selectedDeparture }}) | canBook: {{ canBook }}
+          Debug: Date: {{ !!selectedDate }} | Arrival: {{ !!selectedArrival }} ({{ selectedArrival }}) | Departure: {{ !!selectedDeparture }} ({{ selectedDeparture }}) | Hours: {{ calculateHours() }} | Limits: {{ bookingLimits.day_min_hours }}-{{ bookingLimits.day_max_hours }} (loaded: {{ limitsLoaded }}) | canBook: {{ canBook }} | validation: {{ validationMessage }}
         </div>
       </div>
     </div>
@@ -70,24 +88,54 @@ export default {
     selectedDates: {
       type: Object,
       default: () => ({ start: null, end: null })
+    },
+    dateAvailability: {
+      type: Object,
+      default: null
+    },
+    service: {
+      type: Object,
+      default: null
     }
   },
   data() {
     return {
       selectedArrival: '',
       selectedDeparture: '',
-      arrivalTimes: ['13:00', '14:00', '15:00', '16:00', '17:00'],
-      departureTimes: ['14:00', '15:00', '16:00', '17:00', '18:00']
+      arrivalTimes: [],
+      departureTimes: [],
+      bookingLimits: {
+        day_min_hours: null,
+        day_max_hours: null
+      },
+      limitsLoaded: false
     }
   },
   computed: {
     canBook() {
       if (this.bookingType === 'day') {
-        return this.selectedDate && this.selectedArrival && this.selectedDeparture
+        const hasSelection = this.selectedDate && this.selectedArrival && this.selectedDeparture && this.limitsLoaded
+        const duration = this.calculateHours()
+        const isValidDuration = duration >= this.bookingLimits.day_min_hours && duration <= this.bookingLimits.day_max_hours
+        return hasSelection && isValidDuration
       } else {
         return this.selectedDates.start && this.selectedDates.end
       }
+    },
+    validationMessage() {
+      if (this.bookingType === 'day' && this.selectedArrival && this.selectedDeparture && this.limitsLoaded) {
+        const duration = this.calculateHours()
+        if (duration < this.bookingLimits.day_min_hours) {
+          return `Durée minimum: ${this.bookingLimits.day_min_hours} heures`
+        } else if (duration > this.bookingLimits.day_max_hours) {
+          return `Durée maximum: ${this.bookingLimits.day_max_hours} heures`
+        }
+      }
+      return null
     }
+  },
+  mounted() {
+    this.fetchBookingLimits()
   },
   watch: {
     selectedArrival() {
@@ -95,9 +143,37 @@ export default {
     },
     selectedDeparture() {
       this.emitTimeSelection()
+    },
+    dateAvailability: {
+      handler(newVal) {
+        console.log('Date availability updated:', newVal)
+        // Reset selections if currently selected times are now unavailable
+        if (this.selectedArrival && this.isArrivalTimeDisabled(this.selectedArrival)) {
+          this.selectedArrival = ''
+        }
+        if (this.selectedDeparture && this.isDepartureTimeDisabled(this.selectedDeparture)) {
+          this.selectedDeparture = ''
+        }
+      },
+      deep: true
     }
   },
   methods: {
+    async fetchBookingLimits() {
+      try {
+        const response = await fetch('/intense_experience-api/booking-limits')
+        const data = await response.json()
+        if (data.status === 'success' && data.booking_limits) {
+          this.bookingLimits = data.booking_limits
+          this.arrivalTimes = data.arrival_times || []
+          this.departureTimes = data.departure_times || []
+          this.limitsLoaded = true
+        }
+      } catch (error) {
+        console.error('Failed to fetch booking limits from backend:', error)
+        this.limitsLoaded = false
+      }
+    },
     emitTimeSelection() {
       if (this.selectedArrival && this.selectedDeparture) {
         this.$emit('time-selected', {
@@ -143,6 +219,54 @@ export default {
         date: this.selectedDate,
         dates: this.selectedDates
       })
+    },
+
+    isArrivalTimeDisabled(arrivalTime) {
+      if (this.bookingType !== 'day' || !this.dateAvailability || !this.dateAvailability.suite_availability) {
+        return false
+      }
+
+      // Check if there's at least one suite with at least one available slot starting at this arrival time
+      for (const suiteId in this.dateAvailability.suite_availability) {
+        const slots = this.dateAvailability.suite_availability[suiteId]
+        const hasSlotWithThisArrival = slots.some(slot => slot.arrival === arrivalTime)
+        if (hasSlotWithThisArrival) {
+          return false // At least one slot available with this arrival time
+        }
+      }
+
+      return true // No slots available with this arrival time
+    },
+
+    isDepartureTimeDisabled(departureTime) {
+      if (this.bookingType !== 'day' || !this.dateAvailability || !this.dateAvailability.suite_availability) {
+        return false
+      }
+
+      // If no arrival time selected, check if this departure time is used in any available slot
+      if (!this.selectedArrival) {
+        for (const suiteId in this.dateAvailability.suite_availability) {
+          const slots = this.dateAvailability.suite_availability[suiteId]
+          const hasSlotWithThisDeparture = slots.some(slot => slot.departure === departureTime)
+          if (hasSlotWithThisDeparture) {
+            return false
+          }
+        }
+        return true
+      }
+
+      // If arrival time is selected, check if this combination is available
+      for (const suiteId in this.dateAvailability.suite_availability) {
+        const slots = this.dateAvailability.suite_availability[suiteId]
+        const hasMatchingSlot = slots.some(slot => 
+          slot.arrival === this.selectedArrival && slot.departure === departureTime
+        )
+        if (hasMatchingSlot) {
+          return false // This combination is available
+        }
+      }
+
+      return true // This combination is not available
     }
   }
 }
@@ -213,6 +337,11 @@ export default {
   color: white;
 }
 
+.time-select option:disabled {
+  color: #666;
+  font-style: italic;
+}
+
 /* Book Button */
 .book-btn {
   background: #c9a961;
@@ -235,6 +364,14 @@ export default {
   background: #666;
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.validation-message {
+  color: #ff6b6b;
+  font-size: 13px;
+  text-align: center;
+  margin: 10px 0;
+  font-weight: 500;
 }
 
 .no-charge-text {

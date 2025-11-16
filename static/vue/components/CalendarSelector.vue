@@ -168,6 +168,8 @@
           :booking-type="selectedBookingType"
           :selected-date="selectedBookingType === 'day' ? selectedDates.start : null"
           :selected-dates="selectedBookingType === 'night' ? selectedDates : { start: null, end: null }"
+          :date-availability="getDateAvailability(selectedDates.start)"
+          :service="service"
           @time-selected="handleTimeSelection"
           @book-suite="confirmSelection"
         />
@@ -258,25 +260,13 @@ export default {
 
       this.availabilityLoading = true
 
-      // Only use bulk availability API for night bookings
-      if (this.selectedBookingType !== 'night') {
-        console.log('Bulk availability only for night bookings, assuming available for:', this.selectedBookingType)
-        // For non-night bookings, assume all dates are available
-        dates.forEach(dateStr => {
-          this.dateAvailabilityCache[dateStr] = {
-            available: true,
-            total_suites: 1,
-            booked_suites: 0,
-            available_suites: 1,
-            booked_suite_ids: []
-          }
-        })
-        this.availabilityLoading = false
-        return
-      }
+      // Determine which endpoint to use based on booking type
+      const endpoint = this.selectedBookingType === 'night' 
+        ? '/intense_experience-api/bulk-availability-nuitee'
+        : '/intense_experience-api/bulk-availability-journee'
 
       try {
-        const response = await fetch('/intense_experience-api/bulk-availability-nuitee', {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -296,30 +286,31 @@ export default {
         if (data.status === 'success' && data.availability) {
           // Update cache with new availability data
           Object.assign(this.dateAvailabilityCache, data.availability)
-          console.log('Availability cache updated:', this.dateAvailabilityCache)
         } else {
-          console.warn('Bulk availability failed:', data.error)
-          // Fall back to assuming dates are available
+          console.error('Bulk availability failed:', data.error)
+          // Mark dates as unavailable if the API fails
           dates.forEach(dateStr => {
             this.dateAvailabilityCache[dateStr] = {
-              available: true,
-              total_suites: 1,
+              available: false,
+              total_suites: 0,
               booked_suites: 0,
-              available_suites: 1,
-              booked_suite_ids: []
+              available_suites: 0,
+              booked_suite_ids: [],
+              error: true
             }
           })
         }
       } catch (error) {
         console.error('Failed to fetch availability:', error)
-        // On error, assume dates are available
+        // Mark dates as unavailable on error for safety
         dates.forEach(dateStr => {
           this.dateAvailabilityCache[dateStr] = {
-            available: true,
-            total_suites: 1,
+            available: false,
+            total_suites: 0,
             booked_suites: 0,
-            available_suites: 1,
-            booked_suite_ids: []
+            available_suites: 0,
+            booked_suite_ids: [],
+            error: true
           }
         })
       } finally {
@@ -333,15 +324,19 @@ export default {
       const currentMonthDates = this.getDaysInMonth(this.currentMonth)
       const nextMonthDates = this.getDaysInMonth(this.nextMonth)
 
-      // Collect all visible dates
+      // Collect all visible dates (normalize to UTC midnight)
       currentMonthDates.forEach(date => {
         if (!this.isDateInPast(date)) {
-          displayedDates.push(date.toISOString())
+          // Create UTC date at midnight to avoid timezone issues
+          const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+          displayedDates.push(utcDate.toISOString())
         }
       })
       nextMonthDates.forEach(date => {
         if (!this.isDateInPast(date)) {
-          displayedDates.push(date.toISOString())
+          // Create UTC date at midnight to avoid timezone issues
+          const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+          displayedDates.push(utcDate.toISOString())
         }
       })
 
@@ -349,7 +344,6 @@ export default {
       const uncachedDates = displayedDates.filter(dateStr => !this.dateAvailabilityCache[dateStr])
 
       if (uncachedDates.length > 0) {
-        console.log('Fetching availability for', uncachedDates.length, 'dates')
         await this.fetchBulkAvailability(uncachedDates)
       }
     },
@@ -357,15 +351,17 @@ export default {
     isDateAvailable(date) {
       if (this.isDateInPast(date)) return false
 
-      const dateStr = date.toISOString()
+      // Normalize to UTC midnight to match API keys
+      const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+      const dateStr = utcDate.toISOString()
       const availability = this.dateAvailabilityCache[dateStr]
 
       if (!availability) {
-        // If we don't have availability data yet, assume available while loading
-        return true
+        // If we don't have availability data yet, show as unavailable (will load)
+        return false
       }
 
-      // Date is available if at least one suite is free
+      // Date is available if at least one suite has at least one time slot free
       return availability.available
     },
 
@@ -380,7 +376,7 @@ export default {
       }
     },
 
-    selectDate(date) {
+    async selectDate(date) {
       if (this.selectedBookingType === 'day') {
         // For day bookings, select a single day
         this.selectedDates = {
@@ -390,6 +386,13 @@ export default {
         // Set time to default day hours (13:00 - 18:00)
         this.selectedDates.start.setHours(13, 0, 0, 0)
         this.selectedDates.end.setHours(18, 0, 0, 0)
+        
+        // Ensure availability data is loaded for this date (normalize to UTC midnight)
+        const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+        const dateStr = utcDate.toISOString()
+        if (!this.dateAvailabilityCache[dateStr]) {
+          await this.fetchBulkAvailability([dateStr])
+        }
       }
     },
 
@@ -553,6 +556,12 @@ export default {
       if (!this.selectedDates.start || !this.selectedDates.end) return 0
       const diffTime = Math.abs(this.selectedDates.end - this.selectedDates.start)
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    },
+
+    getDateAvailability(date) {
+      if (!date) return null
+      const dateStr = date.toISOString()
+      return this.dateAvailabilityCache[dateStr] || null
     }
   }
 }
