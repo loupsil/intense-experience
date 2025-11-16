@@ -510,12 +510,27 @@ export default {
 
     handleTimeSelection(timeData) {
       console.log('Time selection received in CalendarSelector:', timeData)
-      // For day bookings, update the end time based on selected departure time
-      if (this.selectedBookingType === 'day' && this.selectedDates.start && timeData.departure) {
-        const endDate = new Date(this.selectedDates.start)
-        const [hours, minutes] = timeData.departure.split(':')
-        endDate.setHours(parseInt(hours), parseInt(minutes), 0, 0)
-        this.selectedDates.end = endDate
+      // For day bookings, update both start and end times based on selected arrival/departure times
+      if (this.selectedBookingType === 'day' && this.selectedDates.start) {
+        // Get the base date (date only, without time)
+        const baseDate = new Date(this.selectedDates.start)
+        baseDate.setHours(0, 0, 0, 0)
+        
+        // Update start time with arrival time
+        if (timeData.arrival) {
+          const startDate = new Date(baseDate)
+          const [arrHours, arrMinutes] = timeData.arrival.split(':')
+          startDate.setHours(parseInt(arrHours), parseInt(arrMinutes), 0, 0)
+          this.selectedDates.start = startDate
+        }
+        
+        // Update end time with departure time
+        if (timeData.departure) {
+          const endDate = new Date(baseDate)
+          const [depHours, depMinutes] = timeData.departure.split(':')
+          endDate.setHours(parseInt(depHours), parseInt(depMinutes), 0, 0)
+          this.selectedDates.end = endDate
+        }
       }
     },
 

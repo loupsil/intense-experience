@@ -77,12 +77,42 @@ export default {
     availability: {
       type: Object,
       required: true
+    },
+    serviceType: {
+      type: String,
+      required: true,
+      validator: (value) => ['nuitée', 'journée'].includes(value)
+    },
+    startDate: {
+      type: String,
+      required: true
+    },
+    endDate: {
+      type: String,
+      required: true
     }
   },
   data() {
     return {
-      selectedSuite: null
+      selectedSuite: null,
+      pricing: {}, // Will store pricing data for each suite
+      loading: false
     }
+  },
+  watch: {
+    serviceType: 'fetchPricing',
+    startDate: 'fetchPricing',
+    endDate: 'fetchPricing',
+    pricing: {
+      handler(newPricing) {
+        this.$emit('pricing-updated', newPricing)
+      },
+      deep: true,
+      immediate: true
+    }
+  },
+  mounted() {
+    this.fetchPricing()
   },
   methods: {
     selectSuite(suite) {
@@ -92,27 +122,89 @@ export default {
       }
     },
 
-    getSuiteBasePrice(suite) {
-      // This would typically come from the pricing API
-      // For now, we'll use some default prices based on suite type
-      const basePrices = {
-        'GAIA': 260,
-        'EXTASE': 500,
-        'INTENSE': 260,
-        'EUPHORYA': 260,
-        'IGNIS': 260,
-        'KAIROS': 260,
-        'AETHER': 260
-      }
+    async fetchPricing() {
+      this.loading = true
+      try {
+        const rateId = this.getRateId()
+        const response = await fetch('/intense_experience-api/pricing', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            rate_id: rateId,
+            start_date: this.startDate,
+            end_date: this.endDate
+          })
+        })
 
-      const suiteName = suite.Names?.['fr-FR'] || suite.Name
-      for (const [key, price] of Object.entries(basePrices)) {
-        if (suiteName.includes(key)) {
-          return price
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const result = await response.json()
+        if (result.status === 'success') {
+          // Store pricing data by category ID
+          this.pricing = {}
+          if (Array.isArray(result.pricing)) {
+            result.pricing.forEach(categoryPrice => {
+              this.pricing[categoryPrice.CategoryId] = categoryPrice
+            })
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching pricing:', error)
+        // Fallback to default pricing if API fails
+        this.pricing = {}
+      } finally {
+        this.loading = false
+      }
+    },
+
+    getRateId() {
+      // Return appropriate rate ID based on service type
+      if (this.serviceType === 'nuitée') {
+        return 'ed9391ac-b184-4876-8cc1-b3850108b8b0' // Tarif Suites nuitée
+      } else if (this.serviceType === 'journée') {
+        return 'c3c2109d-984a-4ad4-978e-b3850108b8ad' // TARIF JOURNEE EN SEMAINE
+      }
+      return null
+    },
+
+    getSuiteBasePrice(suite) {
+      // Get price from API pricing data
+      const categoryPrice = this.pricing[suite.Id]
+      if (categoryPrice && categoryPrice.Prices && categoryPrice.Prices.length > 0) {
+        // For journée: sum all hourly prices, for nuitée: take the first (daily) price
+        if (this.serviceType === 'journée') {
+          const total = categoryPrice.Prices.reduce((sum, price) => sum + price, 0)
+          const hours = categoryPrice.Prices.length
+          const hourlyRate = categoryPrice.Prices[0]
+
+          // For time-based bookings, the number of hours should be hours - 1
+          // because the API includes both start and end boundaries
+          const actualHours = hours - 1
+          const correctedTotal = actualHours * hourlyRate
+
+          console.log(`SuiteSelector: JOURNÉE PRICING COMPUTATION for ${suite.Names?.['fr-FR'] || suite.Name}:`)
+          console.log(`  - Service Type: ${this.serviceType}`)
+          console.log(`  - API returned ${hours} price entries`)
+          console.log(`  - Corrected hours for booking: ${actualHours} (API includes boundaries)`)
+          console.log(`  - Hourly rate: ${hourlyRate}€`)
+          console.log(`  - Total calculation: ${actualHours} × ${hourlyRate}€ = ${correctedTotal}€`)
+          console.log(`  - Date range: ${this.startDate} to ${this.endDate}`)
+
+          return correctedTotal
+        } else {
+          // For nuitée, take the first price (daily rate)
+          console.log(`SuiteSelector: NUITÉE PRICING for ${suite.Names?.['fr-FR'] || suite.Name}: ${categoryPrice.Prices[0]}€`)
+          return categoryPrice.Prices[0]
         }
       }
 
-      return 260 // Default price
+      // No pricing data available
+      console.log(`SuiteSelector: NO PRICING DATA for ${suite.Names?.['fr-FR'] || suite.Name} - returning N/A`)
+      return 'N/A'
     }
   }
 }

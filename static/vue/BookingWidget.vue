@@ -83,7 +83,11 @@
         <SuiteSelector
           :suites="availableSuites"
           :availability="suiteAvailability"
+          :service-type="getServiceType()"
+          :start-date="selectedDates.start"
+          :end-date="selectedDates.end"
           @suite-selected="selectSuite"
+          @pricing-updated="updateSuitePricing"
         />
         <div class="step-navigation">
           <button class="prev-btn" @click="prevStep">Retour</button>
@@ -113,7 +117,7 @@
           </div>
           <div class="summary-item">
             <span>{{ selectedSuite?.Names['fr-FR'] }}</span>
-            <span>{{ pricing.total }}€</span>
+            <span>{{ pricing.total }}{{ typeof pricing.total === 'number' ? '€' : '' }}</span>
           </div>
           <!-- Individual option lines -->
           <div
@@ -125,7 +129,7 @@
             <span>{{ getProductPrice(option) }}€</span>
           </div>
           <div class="summary-total">
-            <strong>Total: {{ pricing.total + pricing.options }}€</strong>
+            <strong>Total: {{ typeof pricing.total === 'number' ? (pricing.total + pricing.options) + '€' : pricing.total }}</strong>
           </div>
         </div>
         <div class="step-navigation">
@@ -165,7 +169,7 @@
             </div>
             <div class="detail-item total">
               <span class="label">Total :</span>
-              <span>{{ pricing.total + pricing.options }}€</span>
+              <span>{{ typeof pricing.total === 'number' ? (pricing.total + pricing.options) + '€' : pricing.total }}</span>
             </div>
           </div>
 
@@ -187,7 +191,7 @@
       <div v-if="currentStep === 7" class="step">
         <PaymentComponent
           :reservation="reservation"
-          :amount="pricing.total + pricing.options"
+          :amount="typeof pricing.total === 'number' ? pricing.total + pricing.options : 0"
           @reset-booking="resetBooking"
         />
       </div>
@@ -234,6 +238,7 @@ export default {
       selectedSuite: this.preselectedSuite,
       availableProducts: [],
       selectedOptions: [],
+      suitePricing: {}, // Pricing data from SuiteSelector
       pricing: { total: 0, options: 0 },
       customerInfo: {},
       customer: null,
@@ -451,6 +456,63 @@ export default {
 
     selectSuite(suite) {
       this.selectedSuite = suite
+      this.calculateSuitePricing()
+    },
+
+    updateSuitePricing(pricing) {
+      this.suitePricing = pricing
+      if (this.selectedSuite) {
+        this.calculateSuitePricing()
+      }
+    },
+
+    calculateSuitePricing() {
+      if (!this.selectedSuite || !this.suitePricing) {
+        console.log('BookingWidget: calculateSuitePricing - missing data:', {
+          selectedSuite: !!this.selectedSuite,
+          suitePricing: !!this.suitePricing
+        })
+        return
+      }
+
+      // Get pricing for the selected suite
+      const suitePricing = this.suitePricing[this.selectedSuite.Id]
+      console.log('BookingWidget: calculateSuitePricing for suite:', this.selectedSuite.Names?.['fr-FR'] || this.selectedSuite.Name)
+      console.log('BookingWidget: Suite pricing data:', suitePricing)
+
+      if (suitePricing && suitePricing.Prices && suitePricing.Prices.length > 0) {
+        // For journée: sum all hourly prices, for nuitée: take the first (daily) price
+        if (this.getServiceType() === 'journée') {
+          const total = suitePricing.Prices.reduce((sum, price) => sum + price, 0)
+          const hours = suitePricing.Prices.length
+          const hourlyRate = suitePricing.Prices[0]
+
+          // For time-based bookings, the number of hours should be hours - 1
+          // because the API includes both start and end boundaries
+          const actualHours = hours - 1
+          const correctedTotal = actualHours * hourlyRate
+
+          console.log('BookingWidget: JOURNÉE PRICING COMPUTATION:')
+          console.log(`  - Service Type: ${this.getServiceType()}`)
+          console.log(`  - API returned ${hours} price entries`)
+          console.log(`  - Corrected hours for booking: ${actualHours} (API includes boundaries)`)
+          console.log(`  - Hourly rate: ${hourlyRate}€`)
+          console.log(`  - Total calculation: ${actualHours} × ${hourlyRate}€ = ${correctedTotal}€`)
+          console.log(`  - Date range: ${this.selectedDates.start} to ${this.selectedDates.end}`)
+
+          this.pricing.total = correctedTotal
+        } else {
+          // For nuitée, take the first price (daily rate)
+          console.log('BookingWidget: NUITÉE PRICING:', suitePricing.Prices[0] + '€')
+          this.pricing.total = suitePricing.Prices[0]
+        }
+      } else {
+        // No pricing data available
+        console.log('BookingWidget: NO PRICING DATA - setting total to N/A')
+        this.pricing.total = 'N/A'
+      }
+
+      console.log('BookingWidget: Final pricing.total set to:', this.pricing.total + (typeof this.pricing.total === 'number' ? '€' : ''))
     },
 
     async loadProducts() {
@@ -472,55 +534,15 @@ export default {
 
     updateOptions(options) {
       this.selectedOptions = options
-      this.calculatePricing()
+      this.calculateOptionsPricing()
     },
 
-    async calculatePricing() {
-      if (!this.selectedSuite || !this.selectedDates.start || !this.selectedDates.end) return
-
-      try {
-        // Convert dates to TimeUnit start times (23:00:00.000Z)
-        const startDate = new Date(this.selectedDates.start)
-        const endDate = new Date(this.selectedDates.end)
-
-        // Set to 23:00 UTC for TimeUnit start
-        startDate.setUTCHours(23, 0, 0, 0)
-
-        // For end date, we need the TimeUnit that covers the checkout
-        // If checkout is before 23:00, use previous day at 23:00
-        // If checkout is at or after 23:00, use same day at 23:00
-        if (endDate.getUTCHours() < 23) {
-          endDate.setUTCDate(endDate.getUTCDate() - 1)
-        }
-        endDate.setUTCHours(23, 0, 0, 0)
-
-        // Select appropriate rate based on service
-        const rateId = this.getDefaultRateForService()
-
-        const response = await fetch('/intense_experience-api/pricing', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            rate_id: rateId,
-            start_date: startDate.toISOString(),
-            end_date: endDate.toISOString(),
-            suite_id: this.selectedSuite.Id
-          })
-        })
-        const data = await response.json()
-        if (data.status === 'success') {
-          // Calculate total from pricing data
-          const prices = data.pricing.Prices || []
-          this.pricing.total = prices.reduce((sum, price) => sum + price, 0)
-
-          // Calculate options pricing
-          this.pricing.options = this.selectedOptions.reduce((sum, option) => {
-            return sum + this.getProductPrice(option)
-          }, 0)
-        }
-      } catch (error) {
-        console.error('Error calculating pricing:', error)
-      }
+    calculateOptionsPricing() {
+      // Calculate options pricing only (suite pricing comes from SuiteSelector)
+      this.pricing.options = this.selectedOptions.reduce((sum, option) => {
+        const price = this.getProductPrice(option)
+        return sum + (typeof price === 'number' ? price : 0)
+      }, 0)
     },
 
     async createReservation() {
@@ -589,12 +611,12 @@ export default {
           this.currentStep = 4
         } else {
           this.loadProducts()
-          this.calculatePricing()
+          this.calculateOptionsPricing()
           this.currentStep = 5
         }
       } else if (this.currentStep === 4) {
         this.loadProducts()
-        this.calculatePricing()
+        this.calculateOptionsPricing()
         this.currentStep = 5
       } else if (this.currentStep === 5) {
         await this.createReservation()
@@ -623,6 +645,15 @@ export default {
 
     getServiceIcon(serviceId) {
       return serviceId === '86fcc6a7-75ce-457a-a425-b3850108b6bf' ? 'fas fa-sun' : 'fas fa-moon'
+    },
+
+    getServiceType() {
+      const JOURNEE_ID = '86fcc6a7-75ce-457a-a425-b3850108b6bf'
+      const NUITEE_ID = '7ba0b732-93cc-477a-861d-b3850108b730'
+
+      if (!this.selectedService) return 'journée' // default
+
+      return this.selectedService.Id === JOURNEE_ID ? 'journée' : 'nuitée'
     },
 
     getDefaultRateForService() {
@@ -675,6 +706,7 @@ export default {
       this.selectedSuite = null
       this.selectedDates = { start: null, end: null }
       this.selectedOptions = []
+      this.suitePricing = {}
       this.customerInfo = { firstName: '', lastName: '', email: '', phone: '' }
       this.pricing = { total: 0, options: 0, breakdown: [] }
       this.reservation = null

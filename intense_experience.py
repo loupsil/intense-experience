@@ -155,15 +155,6 @@ def check_bulk_availability_journee():
     service_id = data.get('service_id')
     dates = data.get('dates')  # List of ISO date strings
     
-    logger.info("=" * 80)
-    logger.info("BULK AVAILABILITY CHECK (JOURNEE) - Starting")
-    logger.info("=" * 80)
-    logger.info(f"Service ID: {service_id}")
-    logger.info(f"Number of dates to check: {len(dates) if dates else 0}")
-    logger.info(f"Day Min Hours: {DAY_MIN_HOURS}")
-    logger.info(f"Day Max Hours: {DAY_MAX_HOURS}")
-    logger.info(f"Cleaning Buffer Hours: {CLEANING_BUFFER_HOURS}")
-    
     if not all([service_id, dates]) or len(dates) == 0:
         logger.error("Missing required parameters")
         return jsonify({"error": "Missing required parameters", "status": "error"}), 400
@@ -404,14 +395,6 @@ def check_bulk_availability_nuitee():
     service_id = data.get('service_id')
     dates = data.get('dates')  # List of ISO date strings
     booking_type = data.get('booking_type', 'day')  # 'day' or 'night'
-
-    logger.info("=" * 80)
-    logger.info("BULK AVAILABILITY CHECK - Starting")
-    logger.info("=" * 80)
-    logger.info(f"Service ID: {service_id}")
-    logger.info(f"Number of dates to check: {len(dates) if dates else 0}")
-    logger.info(f"Booking Type: {booking_type}")
-    logger.info(f"Cleaning Buffer Hours: {CLEANING_BUFFER_HOURS}")
 
     if not all([service_id, dates]) or len(dates) == 0:
         logger.error("Missing required parameters")
@@ -926,6 +909,21 @@ def create_reservation():
         logger.error(f"  start_date present: {bool(start_date)}")
         logger.error(f"  end_date present: {bool(end_date)}")
         return jsonify({"error": "Missing required reservation parameters", "status": "error"}), 400
+
+    # Validate that start_date is before end_date
+    try:
+        start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        
+        if start_dt >= end_dt:
+            logger.error(f"Invalid date range: StartUtc ({start_date}) must be before EndUtc ({end_date})")
+            return jsonify({
+                "error": "Invalid date range: Start date must be before end date",
+                "status": "error"
+            }), 400
+    except (ValueError, AttributeError) as e:
+        logger.error(f"Failed to parse dates: {e}")
+        return jsonify({"error": "Invalid date format", "status": "error"}), 400
 
     # Get the correct age category for the service
     age_category_id = get_adult_age_category_for_service(service_id)
