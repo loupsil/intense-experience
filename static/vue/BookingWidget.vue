@@ -7,8 +7,22 @@
         <p>Add your travel dates for exact pricing</p>
       </div>
 
+      <!-- Debug Timeline -->
+      <div v-if="debugMode" class="debug-timeline">
+        <div 
+          v-for="step in 7" 
+          :key="step"
+          class="timeline-step"
+          :class="{ active: currentStep === step }"
+          @click="currentStep = step"
+        >
+          <div class="step-dot"></div>
+          <span class="step-number">{{ step }}</span>
+        </div>
+      </div>
+
       <!-- Selection Header - Show selected service and suite -->
-      <div v-if="selectedService && currentStep > 1" v-show="false" class="selection-header">
+      <div v-if="selectedService && currentStep > 1" v-show="debugMode" class="selection-header">
         <div class="header-content">
           <div class="header-item">
             <i class="fas fa-calendar-check"></i>
@@ -226,6 +240,11 @@
         <p>{{ loadingMessage }}</p>
       </div>
     </div>
+
+    <!-- Debug button -->
+    <button class="debug-btn" @click="toggleDebug" title="Toggle debug mode">
+      DEV
+    </button>
   </div>
 </template>
 
@@ -277,7 +296,8 @@ export default {
       reservation: null,
       loading: false,
       loadingMessage: '',
-      bookingType: 'day' // 'day' or 'night'
+      bookingType: 'day', // 'day' or 'night'
+      debugMode: false // Debug mode toggle
     }
   },
   computed: {
@@ -848,6 +868,10 @@ export default {
       this.pricing = { total: 0, options: 0, breakdown: [] }
       this.reservation = null
       this.accessPoint = 'general'
+    },
+
+    toggleDebug() {
+      this.debugMode = !this.debugMode
     }
   }
 }
@@ -1308,6 +1332,109 @@ h2 {
 
   .pay-now-btn, .home-btn {
     width: 100%;
+  }
+}
+
+/* Debug Timeline - Minimalistic */
+.debug-timeline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px;
+  margin-bottom: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px dashed #ddd;
+}
+
+.timeline-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.timeline-step:hover .step-dot {
+  transform: scale(1.2);
+  background: #007bff;
+}
+
+.step-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ccc;
+  transition: all 0.2s ease;
+}
+
+.timeline-step.active .step-dot {
+  width: 16px;
+  height: 16px;
+  background: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+}
+
+.step-number {
+  font-size: 11px;
+  color: #666;
+  font-weight: 500;
+}
+
+.timeline-step.active .step-number {
+  color: #007bff;
+  font-weight: 700;
+}
+
+/* Debug button */
+.debug-btn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #333;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+  z-index: 9999;
+  letter-spacing: 0.5px;
+}
+
+.debug-btn:hover {
+  background: #000;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.debug-btn:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 768px) {
+  .debug-timeline {
+    gap: 15px;
+    padding: 15px;
+  }
+  
+  .step-dot {
+    width: 10px;
+    height: 10px;
+  }
+  
+  .timeline-step.active .step-dot {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .step-number {
+    font-size: 10px;
   }
 }
 </style>
