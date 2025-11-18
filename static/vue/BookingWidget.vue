@@ -2,7 +2,7 @@
   <div class="booking-widget">
     <div class="booking-container">
       <!-- Quick Booking Header -->
-      <div class="quick-booking-header">
+      <div v-if="currentStep === 2" class="quick-booking-header">
         <h2>Quick booking</h2>
         <p>Add your travel dates for exact pricing</p>
       </div>
@@ -97,25 +97,34 @@
           @dates-confirmed="nextStep"
         />
         <div class="step-navigation">
-          <button class="prev-btn" @click="prevStep">Retour</button>
+          <button class="prev-btn" @click="prevStep">Back</button>
         </div>
       </div>
 
       <!-- Step 3: Customer Information -->
       <div v-if="currentStep === 3" class="step">
-        <h2>Vos informations</h2>
+        <h2>Your information</h2>
         <CustomerForm
+          ref="customerForm"
           :loading="loading"
+          :bookingType="bookingType"
           @customer-info="handleCustomerInfo"
         />
         <div class="step-navigation">
-          <button class="prev-btn" @click="prevStep">Retour</button>
+          <button class="prev-btn" @click="prevStep">Back</button>
+          <button
+            class="next-btn"
+            :disabled="loading"
+            @click="submitCustomerForm"
+          >
+            {{ loading ? 'Creating profile...' : 'Continue' }}
+          </button>
         </div>
       </div>
 
       <!-- Step 4: Suite Selection (only if not preselected) -->
       <div v-if="currentStep === 4 && !preselectedSuite && !preselectedSuiteId" class="step">
-        <h2>Choisissez votre suite</h2>
+        <h2>Choose your suite</h2>
         <SuiteSelector
           :suites="availableSuites"
           :availability="suiteAvailability"
@@ -128,27 +137,27 @@
           @pricing-requested="handlePricingRequest"
         />
         <div class="step-navigation">
-          <button class="prev-btn" @click="prevStep">Retour</button>
+          <button class="prev-btn" @click="prevStep">Back</button>
           <button
             class="next-btn"
             :disabled="!selectedSuite"
             @click="nextStep"
           >
-            Continuer
+            Continue
           </button>
         </div>
       </div>
 
       <!-- Step 5: Options & Upsells -->
       <div v-if="currentStep === 5" class="step">
-        <h2>Options supplémentaires</h2>
+        <h2>Additional options</h2>
         <OptionsSelector
           :products="availableProducts"
           :selected-options="selectedOptions"
           @options-updated="updateOptions"
         />
         <div class="booking-summary">
-          <h3>Récapitulatif</h3>
+          <h3>Summary</h3>
           <div class="summary-item">
             <span>{{ selectedService?.Names['fr-FR'] }}</span>
             <span>{{ formatDateRange(selectedDates.start, selectedDates.end) }}</span>
@@ -171,8 +180,8 @@
           </div>
         </div>
         <div class="step-navigation">
-          <button class="prev-btn" @click="prevStep">Retour</button>
-          <button class="next-btn" @click="nextStep">Continuer</button>
+          <button class="prev-btn" @click="prevStep">Back</button>
+          <button class="next-btn" @click="nextStep">Continue</button>
         </div>
       </div>
 
@@ -181,44 +190,44 @@
       <div v-if="currentStep === 6" class="step">
         <div class="confirmation-message">
           <i class="fas fa-check-circle"></i>
-          <h2>Réservation confirmée !</h2>
-          <p>Votre réservation a été créée avec succès.</p>
+          <h2>Reservation confirmed!</h2>
+          <p>Your reservation has been created successfully.</p>
           <div class="reservation-details">
-            <h3>Détails de votre réservation</h3>
+            <h3>Your reservation details</h3>
             <div class="detail-item">
-              <span class="label">Service :</span>
+              <span class="label">Service:</span>
               <span>{{ selectedService?.Names['fr-FR'] }}</span>
             </div>
             <div class="detail-item">
-              <span class="label">Suite :</span>
+              <span class="label">Suite:</span>
               <span>{{ selectedSuite?.Names['fr-FR'] }}</span>
             </div>
             <div class="detail-item">
-              <span class="label">Dates :</span>
+              <span class="label">Dates:</span>
               <span>{{ formatDateRange(selectedDates.start, selectedDates.end) }}</span>
             </div>
             <div class="detail-item">
-              <span class="label">Client :</span>
+              <span class="label">Client:</span>
               <span>{{ customer?.FirstName }} {{ customer?.LastName }}</span>
             </div>
             <div class="detail-item">
-              <span class="label">Email :</span>
+              <span class="label">Email:</span>
               <span>{{ customer?.Email }}</span>
             </div>
             <div class="detail-item total">
-              <span class="label">Total :</span>
+              <span class="label">Total:</span>
               <span>{{ typeof pricing.total === 'number' ? (pricing.total + pricing.options) + '€' : pricing.total }}</span>
             </div>
           </div>
 
           <div class="payment-choice">
-            <p>Que souhaitez-vous faire maintenant ?</p>
+            <p>What would you like to do now?</p>
             <div class="choice-buttons">
               <button class="pay-now-btn" @click="nextStep">
-                Payer maintenant
+                Pay now
               </button>
               <button class="home-btn" @click="resetBooking">
-                Retour à l'accueil
+                Back to home
               </button>
             </div>
           </div>
@@ -511,6 +520,12 @@ export default {
       // Load pricing for preselected suite when dates are selected
       if (this.selectedSuite && !this.suitePricing[this.selectedSuite.Id]) {
         await this.loadSuitePricing()
+      }
+    },
+
+    submitCustomerForm() {
+      if (this.$refs.customerForm && this.$refs.customerForm.isFormValid) {
+        this.$refs.customerForm.submitForm()
       }
     },
 
@@ -1069,7 +1084,7 @@ h2 {
 }
 
 .next-btn, .prev-btn {
-  background: #007bff;
+  background: #c9a961;
   color: white;
   border: none;
   padding: 12px 30px;
@@ -1077,15 +1092,18 @@ h2 {
   cursor: pointer;
   font-size: 16px;
   transition: background 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .next-btn:hover:not(:disabled), .prev-btn:hover {
-  background: #0056b3;
+  background: #b89851;
 }
 
 .next-btn:disabled {
-  background: #ccc;
+  background: #666;
   cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .step-navigation {

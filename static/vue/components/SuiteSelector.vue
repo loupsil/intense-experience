@@ -298,7 +298,7 @@ export default {
 }
 
 .select-suite-btn {
-  background: #007bff;
+  background: #c9a961;
   color: white;
   border: none;
   padding: 10px 20px;
@@ -306,6 +306,8 @@ export default {
   cursor: pointer;
   font-weight: 500;
   transition: background 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .suite-card.unavailable .select-suite-btn {
@@ -314,7 +316,7 @@ export default {
 }
 
 .select-suite-btn:hover:not(:disabled) {
-  background: #0056b3;
+  background: #b89851;
 }
 
 .selection-summary {

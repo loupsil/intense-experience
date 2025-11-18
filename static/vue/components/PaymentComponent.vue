@@ -250,7 +250,7 @@ export default {
 
 .progress-fill {
   height: 100%;
-  background: #007bff;
+  background: #c9a961;
   border-radius: 4px;
   transition: width 0.3s ease;
 }
@@ -303,12 +303,12 @@ export default {
 }
 
 .retry-btn {
-  background: #007bff;
+  background: #c9a961;
   color: white;
 }
 
 .retry-btn:hover {
-  background: #0056b3;
+  background: #b89851;
 }
 
 .home-btn {
@@ -335,12 +335,12 @@ export default {
 }
 
 .pay-now-btn {
-  background: #007bff;
+  background: #c9a961;
   color: white;
 }
 
 .pay-now-btn:hover {
-  background: #0056b3;
+  background: #b89851;
 }
 
 .payment-complete-btn {
