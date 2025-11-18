@@ -1,6 +1,22 @@
 <template>
   <div class="booking-widget">
     <div class="booking-container">
+      <!-- Selection Header - Show selected service and suite -->
+      <div v-if="selectedService && currentStep > 1" class="selection-header">
+        <div class="header-content">
+          <div class="header-item">
+            <i class="fas fa-calendar-check"></i>
+            <span class="header-label">Service:</span>
+            <span class="header-value">{{ selectedService.Names['fr-FR'] || selectedService.Name }}</span>
+          </div>
+          <div v-if="selectedSuite" class="header-item">
+            <i class="fas fa-home"></i>
+            <span class="header-label">Suite:</span>
+            <span class="header-value">{{ selectedSuite.Names['fr-FR'] || selectedSuite.Name }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Step 1: Service Selection -->
       <div v-if="currentStep === 1" class="step">
         <h2>Choisissez votre expérience</h2>
@@ -842,6 +858,46 @@ export default {
   padding: 30px;
 }
 
+.selection-header {
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  color: white;
+  padding: 15px 20px;
+  border-radius: 8px;
+  margin-bottom: 30px;
+  box-shadow: 0 2px 10px rgba(0,123,255,0.2);
+}
+
+.header-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.header-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-item i {
+  font-size: 16px;
+  opacity: 0.9;
+  width: 20px;
+  text-align: center;
+}
+
+.header-label {
+  font-weight: 500;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.header-value {
+  font-weight: 600;
+  font-size: 16px;
+  margin-left: 5px;
+}
+
 .step {
   min-height: 400px;
 }
@@ -1141,6 +1197,27 @@ h2 {
 @media (max-width: 768px) {
   .booking-container {
     padding: 20px;
+  }
+
+  .selection-header {
+    padding: 12px 15px;
+    margin-bottom: 20px;
+  }
+
+  .header-content {
+    gap: 8px;
+  }
+
+  .header-item {
+    gap: 6px;
+  }
+
+  .header-label {
+    font-size: 13px;
+  }
+
+  .header-value {
+    font-size: 15px;
   }
 
   .service-selection {
