@@ -5,40 +5,33 @@
       <div class="calendar-left">
         <div class="date-selection">
           <div v-if="selectedBookingType === 'day'" class="day-booking">
-            <h3>Sélectionnez votre journée</h3>
-
-            <!-- Calendar Navigation -->
-            <div class="calendar-navigation">
-              <button @click="previousMonth" class="nav-btn">&larr;</button>
-              <h4>{{ formatMonthYear(currentMonth) }}</h4>
-              <button @click="nextMonth" class="nav-btn">&rarr;</button>
-            </div>
-
             <!-- Two Month Calendar View -->
             <div class="two-month-calendar">
+              <!-- Single loading overlay for entire calendar -->
+              <div v-if="availabilityLoading" class="calendar-loading-overlay">
+                <div class="calendar-spinner"></div>
+              </div>
+
               <!-- Current Month -->
               <div class="month-calendar">
-                <h4>{{ formatMonthYear(currentMonth) }}</h4>
+                <div class="month-header">
+                  <button @click="previousMonth" class="nav-btn">&larr;</button>
+                  <h4>{{ formatMonthYear(currentMonth) }}</h4>
+                </div>
                 <div class="calendar-header">
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
                 </div>
                 <div class="calendar-body">
-                  <!-- Loading overlay for current month -->
-                  <div v-if="availabilityLoading" class="calendar-loading-overlay">
-                    <div class="calendar-spinner"></div>
-                  </div>
-
                   <div
                     v-for="date in getDaysInMonth(currentMonth)"
                     :key="date.toISOString()"
                     class="calendar-cell"
                     :class="{
-                      'selected': !availabilityLoading && isDateSelected(date),
-                      'available': !availabilityLoading && isDateAvailable(date),
-                      'unavailable': !availabilityLoading && !isDateAvailable(date),
-                      'past': !availabilityLoading && isDateInPast(date),
-                      'other-month': !availabilityLoading && !isDateInCurrentMonth(date, currentMonth),
-                      'loading': availabilityLoading
+                      'selected': isDateSelected(date),
+                      'available': isDateAvailable(date),
+                      'unavailable': !isDateAvailable(date),
+                      'past': isDateInPast(date),
+                      'other-month': !isDateInCurrentMonth(date, currentMonth)
                     }"
                     @click="!availabilityLoading && selectDate(date)"
                   >
@@ -49,27 +42,24 @@
 
               <!-- Next Month -->
               <div class="month-calendar">
-                <h4>{{ formatMonthYear(nextMonth) }}</h4>
+                <div class="month-header">
+                  <h4>{{ formatMonthYear(nextMonthDate) }}</h4>
+                  <button @click="nextMonth" class="nav-btn">&rarr;</button>
+                </div>
                 <div class="calendar-header">
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
                 </div>
                 <div class="calendar-body">
-                  <!-- Loading overlay for next month -->
-                  <div v-if="availabilityLoading" class="calendar-loading-overlay">
-                    <div class="calendar-spinner"></div>
-                  </div>
-
                   <div
-                    v-for="date in getDaysInMonth(nextMonth)"
+                    v-for="date in getDaysInMonth(nextMonthDate)"
                     :key="date.toISOString()"
                     class="calendar-cell"
                     :class="{
-                      'selected': !availabilityLoading && isDateSelected(date),
-                      'available': !availabilityLoading && isDateAvailable(date),
-                      'unavailable': !availabilityLoading && !isDateAvailable(date),
-                      'past': !availabilityLoading && isDateInPast(date),
-                      'other-month': !availabilityLoading && !isDateInCurrentMonth(date, nextMonth),
-                      'loading': availabilityLoading
+                      'selected': isDateSelected(date),
+                      'available': isDateAvailable(date),
+                      'unavailable': !isDateAvailable(date),
+                      'past': isDateInPast(date),
+                      'other-month': !isDateInCurrentMonth(date, nextMonthDate)
                     }"
                     @click="!availabilityLoading && selectDate(date)"
                   >
@@ -81,29 +71,23 @@
           </div>
 
           <div v-if="selectedBookingType === 'night'" class="night-booking">
-            <h3>Sélectionnez vos dates</h3>
-
-            <!-- Calendar Navigation -->
-            <div class="calendar-navigation">
-              <button @click="previousMonth" class="nav-btn">&larr;</button>
-              <h4>{{ formatMonthYear(currentMonth) }}</h4>
-              <button @click="nextMonth" class="nav-btn">&rarr;</button>
-            </div>
-
             <!-- Two Month Calendar View -->
             <div class="two-month-calendar">
+              <!-- Single loading overlay for entire calendar -->
+              <div v-if="availabilityLoading" class="calendar-loading-overlay">
+                <div class="calendar-spinner"></div>
+              </div>
+
               <!-- Current Month -->
               <div class="month-calendar">
-                <h4>{{ formatMonthYear(currentMonth) }}</h4>
+                <div class="month-header">
+                  <button @click="previousMonth" class="nav-btn">&larr;</button>
+                  <h4>{{ formatMonthYear(currentMonth) }}</h4>
+                </div>
                 <div class="calendar-header">
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
                 </div>
                 <div class="calendar-body">
-                  <!-- Loading overlay for current month -->
-                  <div v-if="availabilityLoading" class="calendar-loading-overlay">
-                    <div class="calendar-spinner"></div>
-                  </div>
-
                   <div
                     v-for="date in getDaysInMonth(currentMonth)"
                     :key="date.toISOString()"
@@ -112,11 +96,10 @@
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': !availabilityLoading && isDateAvailable(date),
-                      'unavailable': !availabilityLoading && !isDateAvailable(date),
-                      'past': !availabilityLoading && isDateInPast(date),
-                      'other-month': !availabilityLoading && !isDateInCurrentMonth(date, currentMonth),
-                      'loading': availabilityLoading
+                      'available': isDateAvailable(date),
+                      'unavailable': !isDateAvailable(date),
+                      'past': isDateInPast(date),
+                      'other-month': !isDateInCurrentMonth(date, currentMonth)
                     }"
                     @click="!availabilityLoading && selectNightDate(date)"
                   >
@@ -127,29 +110,26 @@
 
               <!-- Next Month -->
               <div class="month-calendar">
-                <h4>{{ formatMonthYear(nextMonth) }}</h4>
+                <div class="month-header">
+                  <h4>{{ formatMonthYear(nextMonthDate) }}</h4>
+                  <button @click="nextMonth" class="nav-btn">&rarr;</button>
+                </div>
                 <div class="calendar-header">
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
                 </div>
                 <div class="calendar-body">
-                  <!-- Loading overlay for next month -->
-                  <div v-if="availabilityLoading" class="calendar-loading-overlay">
-                    <div class="calendar-spinner"></div>
-                  </div>
-
                   <div
-                    v-for="date in getDaysInMonth(nextMonth)"
+                    v-for="date in getDaysInMonth(nextMonthDate)"
                     :key="date.toISOString()"
                     class="calendar-cell"
                     :class="{
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': !availabilityLoading && isDateAvailable(date),
-                      'unavailable': !availabilityLoading && !isDateAvailable(date),
-                      'past': !availabilityLoading && isDateInPast(date),
-                      'other-month': !availabilityLoading && !isDateInCurrentMonth(date, nextMonth),
-                      'loading': availabilityLoading
+                      'available': isDateAvailable(date),
+                      'unavailable': !isDateAvailable(date),
+                      'past': isDateInPast(date),
+                      'other-month': !isDateInCurrentMonth(date, nextMonthDate)
                     }"
                     @click="!availabilityLoading && selectNightDate(date)"
                   >
@@ -178,16 +158,7 @@
     </div>
 
     <div class="calendar-footer">
-      <div class="legend">
-        <div class="legend-item">
-          <div class="legend-color available-color"></div>
-          <span>Au moins une suite disponible</span>
-        </div>
-        <div class="legend-item">
-          <div class="legend-color unavailable-color"></div>
-          <span>Toutes les suites réservées</span>
-        </div>
-      </div>
+      <button v-if="selectedDates.start" @click="clearDates" class="clear-dates-link">Clear dates</button>
     </div>
   </div>
 </template>
@@ -225,7 +196,7 @@ export default {
       currentRequestId: null, // Track current request to prevent stale responses
       minDate: new Date().toISOString().split('T')[0],
       currentMonth: new Date(),
-      weekDays: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+      weekDays: ['M', 'T', 'W', 'T', 'F', 'S', 'S'],
       selectionMode: 'start' // 'start' or 'end'
     }
   },
@@ -238,7 +209,7 @@ export default {
         return this.selectedDates.start && this.selectedDates.end
       }
     },
-    nextMonth() {
+    nextMonthDate() {
       const next = new Date(this.currentMonth)
       next.setMonth(next.getMonth() + 1)
       return next
@@ -367,7 +338,7 @@ export default {
       // Get all dates currently displayed in the calendar
       const displayedDates = []
       const currentMonthDates = this.getDaysInMonth(this.currentMonth)
-      const nextMonthDates = this.getDaysInMonth(this.nextMonth)
+      const nextMonthDates = this.getDaysInMonth(this.nextMonthDate)
 
       // Collect all visible dates (normalize to UTC midnight)
       currentMonthDates.forEach(date => {
@@ -472,15 +443,19 @@ export default {
       this.selectionMode = 'start'
     },
 
+    clearDates() {
+      this.resetSelection()
+    },
+
     async previousMonth() {
-      this.currentMonth.setMonth(this.currentMonth.getMonth() - 1)
+      this.currentMonth.setMonth(this.currentMonth.getMonth() - 2)
       this.currentMonth = new Date(this.currentMonth)
       // Fetch availability for newly displayed dates
       await this.fetchAvailabilityForDisplayedDates()
     },
 
     async nextMonth() {
-      this.currentMonth.setMonth(this.currentMonth.getMonth() + 1)
+      this.currentMonth.setMonth(this.currentMonth.getMonth() + 2)
       this.currentMonth = new Date(this.currentMonth)
       // Fetch availability for newly displayed dates
       await this.fetchAvailabilityForDisplayedDates()
@@ -546,7 +521,7 @@ export default {
     },
 
     formatMonthYear(date) {
-      return date.toLocaleDateString('fr-FR', { year: 'numeric', month: 'long' })
+      return date.toLocaleDateString('en-US', { month: 'long' })
     },
 
     handleTimeSelection(timeData) {
@@ -637,7 +612,7 @@ export default {
   display: grid;
   grid-template-columns: 1fr 350px;
   gap: 30px;
-  align-items: start;
+  align-items: center;
 }
 
 .calendar-left {
@@ -724,42 +699,42 @@ export default {
   border: 2px solid #dc3545;
 }
 
-/* Calendar Navigation */
-.calendar-navigation {
+/* Month Header with Navigation */
+.month-header {
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 20px;
-  margin: 20px 0;
+  justify-content: center;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.month-header h4 {
+  margin: 0;
+  color: #333;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: center;
+  text-transform: capitalize;
+  flex: 1;
 }
 
 .nav-btn {
-  background: #f8f9fa;
-  border: 1px solid #e0e0e0;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  background: transparent;
+  border: none;
+  width: 30px;
+  height: 30px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  color: #666;
+  font-size: 24px;
+  color: #333;
   transition: all 0.3s ease;
+  flex-shrink: 0;
 }
 
 .nav-btn:hover {
-  background: #007bff;
-  color: white;
-  border-color: #007bff;
-}
-
-.calendar-navigation h4 {
-  margin: 0;
-  color: #333;
-  font-size: 18px;
-  min-width: 200px;
-  text-align: center;
+  color: #007bff;
 }
 
 /* Two Month Calendar View */
@@ -768,19 +743,13 @@ export default {
   grid-template-columns: 1fr 1fr;
   gap: 40px;
   margin: 20px 0;
+  position: relative;
 }
 
 .month-calendar {
-  background: #f8f9fa;
-  border-radius: 12px;
-  padding: 20px;
-}
-
-.month-calendar h4 {
-  margin: 0 0 15px 0;
-  color: #333;
-  text-align: center;
-  font-size: 16px;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
 }
 
 .calendar-header {
@@ -873,25 +842,35 @@ export default {
   border-color: #f5c6cb; /* Red border */
 }
 
-.calendar-loading-overlay {
+/* Loading overlay covers entire two-month calendar */
+.two-month-calendar > .calendar-loading-overlay {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10;
-  border-radius: 6px;
+  border-radius: 8px;
+  backdrop-filter: blur(2px);
+}
+
+/* Make cells transparent/neutral when loading */
+.two-month-calendar:has(.calendar-loading-overlay) .calendar-cell.available,
+.two-month-calendar:has(.calendar-loading-overlay) .calendar-cell.unavailable {
+  background: transparent !important;
+  color: #666 !important;
+  border-color: transparent !important;
 }
 
 .calendar-spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #007bff;
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #007bff;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -899,28 +878,6 @@ export default {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
-}
-
-.calendar-cell.loading {
-  opacity: 0.6;
-  pointer-events: none;
-  background-color: #f8f9fa !important; /* Neutral gray background during loading */
-  color: #6c757d !important; /* Neutral text color */
-  border-color: transparent !important;
-}
-
-/* Loading state MUST override all other states - use !important with high specificity */
-div.calendar-cell.loading,
-.calendar-cell.loading.available,
-.calendar-cell.loading.unavailable,
-.calendar-cell.loading.past,
-.calendar-cell.available.loading,
-.calendar-cell.unavailable.loading,
-.calendar-cell.past.loading {
-  background-color: #f8f9fa !important;
-  color: #6c757d !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
 }
 
 .date-number {
@@ -941,24 +898,25 @@ div.calendar-cell.loading,
 }
 
 .calendar-footer {
-  margin-top: 30px;
+  margin-top: 20px;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
-  gap: 40px;
 }
 
-.legend {
-  display: flex;
-  gap: 20px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.clear-dates-link {
+  background: none;
+  border: none;
+  color: #333;
+  text-decoration: underline;
+  cursor: pointer;
   font-size: 14px;
-  color: #666;
+  padding: 0;
+  transition: color 0.3s ease;
+}
+
+.clear-dates-link:hover {
+  color: #007bff;
 }
 
 .confirm-dates-btn {
@@ -1034,13 +992,12 @@ div.calendar-cell.loading,
     gap: 20px;
   }
 
-  .calendar-navigation {
-    gap: 15px;
+  .month-header {
+    gap: 10px;
   }
 
-  .calendar-navigation h4 {
-    font-size: 16px;
-    min-width: 150px;
+  .month-header h4 {
+    font-size: 14px;
   }
 
   .month-calendar {
@@ -1056,9 +1013,9 @@ div.calendar-cell.loading,
   }
 
   .nav-btn {
-    width: 35px;
-    height: 35px;
-    font-size: 16px;
+    width: 25px;
+    height: 25px;
+    font-size: 18px;
   }
 }
 </style>

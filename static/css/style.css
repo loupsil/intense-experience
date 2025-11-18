@@ -5,6 +5,24 @@
     box-sizing: border-box;
 }
 
+/* Import custom fonts with fallbacks */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@300&family=Source+Sans+Pro:wght@400;500&display=swap');
+
+/* Font fallbacks for premium fonts */
+@font-face {
+    font-family: 'Canela Condensed Trial';
+    src: local('Canela Condensed Trial'), local('Playfair Display');
+    font-weight: 300;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Whitney HTF';
+    src: local('Whitney HTF'), local('Source Sans Pro');
+    font-weight: 400 500;
+    font-style: normal;
+}
+
 :root {
     --app-background: #f8f9fa; /* Default background */
     --booking-section-background: #ffffff;
@@ -85,25 +103,6 @@ body {
     transition: background-color 0.5s ease;
 }
 
-.section-intro {
-    text-align: center;
-    margin-bottom: 50px;
-}
-
-.section-intro h2 {
-    font-size: 36px;
-    margin-bottom: 15px;
-    color: var(--heading-text-color);
-    transition: color 0.5s ease;
-}
-
-.section-intro p {
-    font-size: 18px;
-    color: var(--secondary-text-color);
-    max-width: 600px;
-    margin: 0 auto;
-    transition: color 0.5s ease;
-}
 
 /* Suites Showcase */
 .suites-showcase {
@@ -281,13 +280,7 @@ body {
         gap: 15px;
     }
 
-    .section-intro h2 {
-        font-size: 28px;
-    }
 
-    .section-intro p {
-        font-size: 16px;
-    }
 
     .suites-grid {
         grid-template-columns: 1fr;

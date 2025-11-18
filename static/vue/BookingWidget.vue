@@ -1,8 +1,14 @@
 <template>
   <div class="booking-widget">
     <div class="booking-container">
+      <!-- Quick Booking Header -->
+      <div class="quick-booking-header">
+        <h2>Quick booking</h2>
+        <p>Add your travel dates for exact pricing</p>
+      </div>
+
       <!-- Selection Header - Show selected service and suite -->
-      <div v-if="selectedService && currentStep > 1" class="selection-header">
+      <div v-if="selectedService && currentStep > 1" v-show="false" class="selection-header">
         <div class="header-content">
           <div class="header-item">
             <i class="fas fa-calendar-check"></i>
@@ -69,7 +75,6 @@
 
       <!-- Step 2: Calendar Selection -->
       <div v-if="currentStep === 2" class="step">
-        <h2>Sélectionnez vos dates</h2>
         <CalendarSelector
           :service="selectedService"
           :booking-type="bookingType"
@@ -851,7 +856,6 @@ export default {
 <style scoped>
 .booking-widget {
   font-family: 'Arial', sans-serif;
-  max-width: 800px;
   margin: 0 auto;
   background: var(--booking-section-background, #fff);
   border-radius: 12px;
@@ -861,6 +865,36 @@ export default {
 
 .booking-container {
   padding: 30px;
+}
+
+.quick-booking-header {
+  text-align: left;
+  margin-bottom: 40px;
+}
+
+.quick-booking-header h2 {
+  font-family: 'Canela Condensed Trial', serif;
+  font-weight: 300;
+  font-style: normal;
+  font-size: 38px;
+  line-height: 105%;
+  letter-spacing: 0%;
+  color: var(--heading-text-color, #333);
+  margin: 0 0 15px 0;
+  transition: color 0.5s ease;
+  text-align: left;
+}
+
+.quick-booking-header p {
+  font-family: 'Whitney HTF', sans-serif;
+  font-weight: 500;
+  font-style: normal;
+  font-size: 15px;
+  line-height: 21px;
+  letter-spacing: 0%;
+  color: var(--secondary-text-color, #666);
+  margin: 0;
+  transition: color 0.5s ease;
 }
 
 .selection-header {
@@ -1253,6 +1287,19 @@ h2 {
 
   .reservation-details {
     padding: 20px;
+  }
+
+  .quick-booking-header {
+    margin-bottom: 30px;
+  }
+
+  .quick-booking-header h2 {
+    font-size: 32px;
+  }
+
+  .quick-booking-header p {
+    font-size: 14px;
+    line-height: 18px;
   }
 
   .choice-buttons {

@@ -43,11 +43,7 @@
         </div>
 
         <button class="book-btn" :disabled="!canBook" @click="bookSuite">BOOK A SUITE</button>
-        <div class="no-charge-text">You won't be charget yet</div>
-        <!-- Debug info -->
-        <div style="font-size: 10px; color: #666; margin-top: 10px;">
-          Debug: Date: {{ !!selectedDate }} | Arrival: {{ !!selectedArrival }} ({{ selectedArrival }}) | Departure: {{ !!selectedDeparture }} ({{ selectedDeparture }}) | Hours: {{ calculateHours() }} | Limits: {{ bookingLimits.day_min_hours }}-{{ bookingLimits.day_max_hours }} (loaded: {{ limitsLoaded }}) | canBook: {{ canBook }} | validation: {{ validationMessage }}
-        </div>
+        <div class="no-charge-text">You won't be charged yet</div>
       </div>
     </div>
 
@@ -66,7 +62,7 @@
         </div>
 
         <button class="book-btn" :disabled="!canBook" @click="bookSuite">BOOK A SUITE</button>
-        <div class="no-charge-text">You won't be charget yet</div>
+        <div class="no-charge-text">You won't be charged yet</div>
       </div>
     </div>
   </div>
@@ -140,8 +136,16 @@ export default {
   },
   mounted() {
     this.fetchBookingLimits()
+    this.$nextTick(() => {
+      this.updateBackgroundColors()
+    })
   },
   watch: {
+    bookingType() {
+      this.$nextTick(() => {
+        this.updateBackgroundColors()
+      })
+    },
     selectedArrival() {
       this.emitTimeSelection()
     },
@@ -175,6 +179,19 @@ export default {
     }
   },
   methods: {
+    updateBackgroundColors() {
+      // Check if component is mounted and $el exists
+      if (!this.$el || !this.$el.style) {
+        return
+      }
+      
+      if (this.bookingType === 'night') {
+        this.$el.style.setProperty('--timeselector-background', '#161616')
+      } else if (this.bookingType === 'day') {
+        this.$el.style.setProperty('--timeselector-background', '#E9E9DF')
+      }
+    },
+
     async fetchBookingLimits() {
       try {
         const response = await fetch('/intense_experience-api/booking-limits')
@@ -202,7 +219,12 @@ export default {
 
     formatDateShort(date) {
       if (!date) return ''
-      return new Date(date).toLocaleDateString('en-GB')
+      const d = new Date(date)
+      return d.toLocaleDateString('en-GB', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric' 
+      })
     },
 
     calculateNights() {
@@ -322,13 +344,16 @@ export default {
 <style scoped>
 .time-selector {
   width: 100%;
+  background: var(--timeselector-background, #2d2d2d);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
 .summary-box {
-  background: #2d2d2d;
+  background: var(--timeselector-background, #2d2d2d);
   color: white;
   padding: 30px 20px;
-  border-radius: 0;
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -336,8 +361,8 @@ export default {
 
 /* Details Section */
 .details-section {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 15px;
   padding-bottom: 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -347,6 +372,36 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1;
+}
+
+/* Side by side layout for time/date fields */
+.time-selection .details-section {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+.time-selection .details-section .detail-row:first-child {
+  grid-column: 1 / -1;
+}
+
+.time-selection .details-section .detail-row:nth-child(2),
+.time-selection .details-section .detail-row:nth-child(3) {
+  display: inline-block;
+}
+
+/* Night booking - side by side layout */
+.date-confirmation .details-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (min-width: 768px) {
+  .time-selection .details-section {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .detail-label {
@@ -358,35 +413,42 @@ export default {
 
 .detail-value {
   font-size: 16px;
-  color: white;
+  color: #333;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(51, 51, 51, 0.2);
 }
 
 .time-select {
+  width: 100%;
   background: transparent;
-  color: white;
+  color: #333;
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(51, 51, 51, 0.2);
   padding: 10px 0;
   font-size: 16px;
   cursor: pointer;
   outline: none;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right center;
   padding-right: 20px;
 }
 
 .time-select option {
-  background: #2d2d2d;
-  color: white;
+  background: #E9E9DF;
+  color: #333;
 }
 
 .time-select option:disabled {
-  color: #666;
+  color: #999;
   font-style: italic;
+}
+
+/* Night booking styles */
+.date-confirmation .detail-value {
+  color: white;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 /* Book Button */
