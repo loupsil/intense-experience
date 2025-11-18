@@ -142,24 +142,14 @@ export default {
           const actualHours = hours - 1
           const correctedTotal = actualHours * hourlyRate
 
-          console.log(`SuiteSelector: JOURNÉE PRICING COMPUTATION for ${suite.Names?.['fr-FR'] || suite.Name}:`)
-          console.log(`  - Service Type: ${this.serviceType}`)
-          console.log(`  - API returned ${hours} price entries`)
-          console.log(`  - Corrected hours for booking: ${actualHours} (API includes boundaries)`)
-          console.log(`  - Hourly rate: ${hourlyRate}€`)
-          console.log(`  - Total calculation: ${actualHours} × ${hourlyRate}€ = ${correctedTotal}€`)
-          console.log(`  - Date range: ${this.startDate} to ${this.endDate}`)
-
           return correctedTotal
         } else {
           // For nuitée, take the first price (daily rate)
-          console.log(`SuiteSelector: NUITÉE PRICING for ${suite.Names?.['fr-FR'] || suite.Name}: ${categoryPrice.Prices[0]}€`)
           return categoryPrice.Prices[0]
         }
       }
 
       // No pricing data available
-      console.log(`SuiteSelector: NO PRICING DATA for ${suite.Names?.['fr-FR'] || suite.Name} - returning N/A`)
       return 'N/A'
     }
   }

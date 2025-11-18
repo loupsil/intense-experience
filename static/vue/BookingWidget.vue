@@ -341,11 +341,8 @@ export default {
     },
 
     async handlePricingRequest(requestData) {
-      console.log('BookingWidget: Handling pricing request from SuiteSelector:', requestData)
-
       const { serviceType, startDate, endDate } = requestData
       if (!startDate || !endDate) {
-        console.log('BookingWidget: Missing dates for pricing request')
         return
       }
 
@@ -382,7 +379,6 @@ export default {
             })
           }
 
-          console.log('BookingWidget: Pricing loaded for SuiteSelector:', pricing)
           // Update suite pricing which will trigger calculateSuitePricing
           this.updateSuitePricing(pricing)
         } else {
@@ -395,24 +391,15 @@ export default {
 
     async loadSuitePricing() {
       if (!this.selectedService || !this.selectedSuite || !this.selectedDates.start || !this.selectedDates.end) {
-        console.log('BookingWidget: loadSuitePricing - missing required data')
         return
       }
 
       try {
         const rateId = this.getRateId()
         if (!rateId) {
-          console.error('BookingWidget: No rate ID available for service type')
+          console.error('No rate ID available for service type')
           return
         }
-
-        console.log('BookingWidget: Loading pricing for preselected suite:', {
-          suite: this.selectedSuite.Names?.['fr-FR'] || this.selectedSuite.Name,
-          service: this.selectedService.Names?.['fr-FR'] || this.selectedService.Name,
-          rateId: rateId,
-          startDate: this.selectedDates.start,
-          endDate: this.selectedDates.end
-        })
 
         const response = await fetch('/intense_experience-api/pricing', {
           method: 'POST',
@@ -440,7 +427,6 @@ export default {
             })
           }
 
-          console.log('BookingWidget: Pricing loaded for preselected suite:', pricing)
           // Update suite pricing which will trigger calculateSuitePricing
           this.updateSuitePricing(pricing)
         } else {
@@ -484,55 +470,43 @@ export default {
     },
 
     async handleCustomerInfo(customerInfo) {
-      console.log('FRONTEND: handleCustomerInfo called with:', customerInfo)
       this.loading = true
       this.loadingMessage = 'Création de votre profil client...'
 
       try {
-        console.log('='.repeat(80))
-        console.log('FRONTEND: Creating customer after date selection')
-        console.log('='.repeat(80))
-        console.log('FRONTEND: Customer info:', customerInfo)
-
         const customerResponse = await fetch('/intense_experience-api/create-customer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(customerInfo)
         })
 
-        console.log('FRONTEND: Customer response status:', customerResponse.status)
-
         if (!customerResponse.ok) {
           const errorText = await customerResponse.text()
-          console.error('FRONTEND: HTTP error:', customerResponse.status, errorText)
+          console.error('HTTP error creating customer:', customerResponse.status, errorText)
           throw new Error(`HTTP ${customerResponse.status}: ${errorText}`)
         }
 
         const customerData = await customerResponse.json()
-        console.log('FRONTEND: Customer response data:', customerData)
 
         if (!customerData || customerData.status !== 'success') {
-          console.error('FRONTEND: Failed to create customer:', customerData?.error || 'Unknown error')
+          console.error('Failed to create customer:', customerData?.error || 'Unknown error')
           throw new Error(customerData?.error || 'Failed to create customer')
         }
 
         if (!customerData.customer || !customerData.customer.Id) {
-          console.error('FRONTEND: Invalid customer data received:', customerData)
+          console.error('Invalid customer data received:', customerData)
           throw new Error('Invalid customer data received')
         }
-
-        console.log('FRONTEND: Customer created successfully:', customerData.customer.Id)
 
         // Store customer info and proceed to next step
         this.customerInfo = customerInfo
         this.customer = customerData.customer
-        console.log('FRONTEND: About to call nextStep()')
 
         // Don't set loading to false here - let nextStep() handle it
         await this.nextStep()
 
       } catch (error) {
-        console.error('FRONTEND: Error in handleCustomerInfo:', error)
+        console.error('Error in handleCustomerInfo:', error)
         alert(`Erreur lors de la création du profil client: ${error.message}`)
         this.loading = false
       }
@@ -548,14 +522,11 @@ export default {
       this.loadingMessage = 'Chargement des suites...'
 
       try {
-        console.log('Fetching suites for service:', this.selectedService.Id)
         const response = await fetch(`/intense_experience-api/suites?service_id=${this.selectedService.Id}`)
         const data = await response.json()
-        console.log('Suites response:', data)
-        
+
         if (data.status === 'success') {
           this.availableSuites = data.suites
-          console.log('Loaded', this.availableSuites.length, 'suites')
           await this.checkSuiteAvailability()
         } else {
           console.error('Failed to load suites:', data.error)
@@ -568,33 +539,19 @@ export default {
     },
 
     async checkSuiteAvailability() {
-      console.log('='.repeat(80))
-      console.log('FRONTEND: checkSuiteAvailability called')
-      console.log('='.repeat(80))
-      console.log('Selected dates:', this.selectedDates)
-      console.log('Selected service:', this.selectedService?.Id)
-      console.log('Booking type:', this.bookingType)
-      console.log('Available suites count:', this.availableSuites?.length || 0)
-      console.log('Preselected suite ID:', this.preselectedSuiteId)
-      console.log('Selected suite ID:', this.selectedSuite?.Id)
-
       if (!this.selectedDates.start || !this.selectedDates.end) {
-        console.warn('FRONTEND: No dates selected - aborting availability check')
+        console.warn('No dates selected - aborting availability check')
         return
       }
 
       // Determine which suites to check availability for
       let suitesToCheck = []
       if (this.selectedSuite) {
-        // If a suite is already selected (preselected), only check that one
         suitesToCheck = [this.selectedSuite]
-        console.log('FRONTEND: Checking availability for preselected suite only:', this.selectedSuite.Id)
       } else if (this.availableSuites && this.availableSuites.length > 0) {
-        // Otherwise check all available suites
         suitesToCheck = this.availableSuites
-        console.log(`FRONTEND: Checking availability for ${this.availableSuites.length} suite(s)`)
       } else {
-        console.warn('FRONTEND: No suites available to check - aborting availability check')
+        console.warn('No suites available to check - aborting availability check')
         return
       }
 
@@ -603,7 +560,6 @@ export default {
       try {
         for (const suite of suitesToCheck) {
           try {
-            console.log(`FRONTEND: Checking suite: ${suite.Id} (${suite.Names?.['fr-FR'] || suite.Name})`)
             const payload = {
               service_id: this.selectedService.Id,
               suite_id: suite.Id,
@@ -611,41 +567,29 @@ export default {
               end_date: this.selectedDates.end,
               booking_type: this.bookingType
             }
-            console.log('FRONTEND: Request payload:', JSON.stringify(payload, null, 2))
 
             const response = await fetch('/intense_experience-api/availability', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)
             })
-            console.log(`FRONTEND: Response status for suite ${suite.Id}:`, response.status)
 
             const data = await response.json()
-            console.log(`FRONTEND: Response data for suite ${suite.Id}:`, JSON.stringify(data, null, 2))
 
             if (data.status === 'success') {
               this.suiteAvailability[suite.Id] = data.available
-              console.log(`FRONTEND: Suite ${suite.Id} availability result: ${data.available}`)
-              if (!data.available) {
-                console.warn(`FRONTEND: Suite ${suite.Id} is UNAVAILABLE. Conflicting reservations: ${data.conflicting_reservations?.length || 0}`)
-              } else {
-                console.log(`FRONTEND: Suite ${suite.Id} is AVAILABLE`)
-              }
             } else {
-              console.error(`FRONTEND: Availability check failed for suite ${suite.Id}:`, data.error)
+              console.error(`Availability check failed for suite ${suite.Id}:`, data.error)
               this.suiteAvailability[suite.Id] = false
             }
           } catch (error) {
-            console.error(`FRONTEND: Error checking availability for suite ${suite.Id}:`, error)
+            console.error(`Error checking availability for suite ${suite.Id}:`, error)
             this.suiteAvailability[suite.Id] = false
           }
         }
-        console.log(`FRONTEND: Availability check complete for ${suitesToCheck.length} suite(s)`)
-        console.log('FRONTEND: Final availability results:', this.suiteAvailability)
       } catch (error) {
-        console.error('FRONTEND: Error in availability check:', error)
+        console.error('Error in availability check:', error)
       }
-      console.log('='.repeat(80))
     },
 
     selectSuite(suite) {
@@ -662,17 +606,11 @@ export default {
 
     calculateSuitePricing() {
       if (!this.selectedSuite || !this.suitePricing) {
-        console.log('BookingWidget: calculateSuitePricing - missing data:', {
-          selectedSuite: !!this.selectedSuite,
-          suitePricing: !!this.suitePricing
-        })
         return
       }
 
       // Get pricing for the selected suite
       const suitePricing = this.suitePricing[this.selectedSuite.Id]
-      console.log('BookingWidget: calculateSuitePricing for suite:', this.selectedSuite.Names?.['fr-FR'] || this.selectedSuite.Name)
-      console.log('BookingWidget: Suite pricing data:', suitePricing)
 
       if (suitePricing && suitePricing.Prices && suitePricing.Prices.length > 0) {
         // For journée: sum all hourly prices, for nuitée: take the first (daily) price
@@ -686,27 +624,15 @@ export default {
           const actualHours = hours - 1
           const correctedTotal = actualHours * hourlyRate
 
-          console.log('BookingWidget: JOURNÉE PRICING COMPUTATION:')
-          console.log(`  - Service Type: ${this.getServiceType()}`)
-          console.log(`  - API returned ${hours} price entries`)
-          console.log(`  - Corrected hours for booking: ${actualHours} (API includes boundaries)`)
-          console.log(`  - Hourly rate: ${hourlyRate}€`)
-          console.log(`  - Total calculation: ${actualHours} × ${hourlyRate}€ = ${correctedTotal}€`)
-          console.log(`  - Date range: ${this.selectedDates.start} to ${this.selectedDates.end}`)
-
           this.pricing.total = correctedTotal
         } else {
           // For nuitée, take the first price (daily rate)
-          console.log('BookingWidget: NUITÉE PRICING:', suitePricing.Prices[0] + '€')
           this.pricing.total = suitePricing.Prices[0]
         }
       } else {
         // No pricing data available
-        console.log('BookingWidget: NO PRICING DATA - setting total to N/A')
         this.pricing.total = 'N/A'
       }
-
-      console.log('BookingWidget: Final pricing.total set to:', this.pricing.total + (typeof this.pricing.total === 'number' ? '€' : ''))
     },
 
     async loadProducts() {
@@ -719,7 +645,6 @@ export default {
           this.availableProducts = allProducts.filter(product =>
             product.ServiceId === this.selectedService.Id
           )
-          console.log('Loaded products for service', this.selectedService.Id, ':', this.availableProducts.length)
         }
       } catch (error) {
         console.error('Error loading products:', error)
@@ -744,15 +669,6 @@ export default {
       this.loadingMessage = 'Création de votre réservation...'
 
       try {
-        console.log('='.repeat(80))
-        console.log('FRONTEND: Creating reservation flow')
-        console.log('='.repeat(80))
-
-        // Use existing customer (created in step 3)
-        console.log('FRONTEND: Using existing customer:', this.customer.Id)
-
-        // Create reservation
-        console.log('FRONTEND: Creating reservation')
         const reservationPayload = {
           service_id: this.selectedService.Id,
           customer_id: this.customer.Id,
@@ -763,31 +679,26 @@ export default {
           person_count: 2,
           options: this.selectedOptions
         }
-        console.log('FRONTEND: Reservation payload:', reservationPayload)
 
         const reservationResponse = await fetch('/intense_experience-api/create-reservation', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(reservationPayload)
         })
-        
-        console.log('FRONTEND: Reservation response status:', reservationResponse.status)
+
         const reservationData = await reservationResponse.json()
-        console.log('FRONTEND: Reservation response data:', reservationData)
 
         if (reservationData.status !== 'success') {
-          console.error('FRONTEND: Failed to create reservation:', reservationData.error)
+          console.error('Failed to create reservation:', reservationData.error)
           throw new Error('Failed to create reservation')
         }
 
         this.reservation = reservationData.reservation
-        console.log('FRONTEND: Reservation created successfully:', this.reservation.Id)
-        console.log('='.repeat(80))
 
         // Stay on confirmation step - user will choose to pay or go home
 
       } catch (error) {
-        console.error('FRONTEND: Error creating reservation:', error)
+        console.error('Error creating reservation:', error)
         alert('Erreur lors de la création de la réservation. Veuillez réessayer.')
       } finally {
         this.loading = false

@@ -149,27 +149,19 @@ export default {
       this.emitTimeSelection()
     },
     selectedDate: {
-      handler(newVal) {
-        console.log('Selected date changed:', newVal)
-        console.log('Date availability:', this.dateAvailability)
+      handler() {
+        // Reset selections if currently selected times are now unavailable
+        if (this.selectedArrival && this.isArrivalTimeDisabled(this.selectedArrival)) {
+          this.selectedArrival = ''
+        }
+        if (this.selectedDeparture && this.isDepartureTimeDisabled(this.selectedDeparture)) {
+          this.selectedDeparture = ''
+        }
       },
       immediate: true
     },
       dateAvailability: {
-      handler(newVal) {
-        console.log('Date availability updated:', newVal)
-        // Log available slots for selected suite
-        if (this.selectedSuite && newVal?.suite_availability) {
-          const suiteId = this.selectedSuite.Id
-          const slots = newVal.suite_availability[suiteId]
-          if (slots && slots.length > 0) {
-            const arrivals = [...new Set(slots.map(s => s.arrival))].sort()
-            const departures = [...new Set(slots.map(s => s.departure))].sort()
-            console.log(`Available for suite ${suiteId.substring(0, 8)}: arrivals=[${arrivals.join(',')}] departures=[${departures.join(',')}] (${slots.length} total slots)`)
-          } else {
-            console.log(`No slots available for suite ${suiteId.substring(0, 8)}`)
-          }
-        }
+      handler() {
         // Reset selections if currently selected times are now unavailable
         if (this.selectedArrival && this.isArrivalTimeDisabled(this.selectedArrival)) {
           this.selectedArrival = ''
@@ -227,13 +219,6 @@ export default {
     },
 
     bookSuite() {
-      console.log('Book suite clicked', {
-        canBook: this.canBook,
-        selectedDate: this.selectedDate,
-        selectedArrival: this.selectedArrival,
-        selectedDeparture: this.selectedDeparture
-      })
-      
       if (!this.canBook) return
       
       this.$emit('book-suite', {
@@ -250,13 +235,7 @@ export default {
         return false
       }
 
-      if (!this.dateAvailability) {
-        console.log(`Arrival ${arrivalTime}: No dateAvailability`)
-        return false
-      }
-
-      if (!this.dateAvailability.suite_availability) {
-        console.log(`Arrival ${arrivalTime}: No suite_availability`)
+      if (!this.dateAvailability?.suite_availability) {
         return false
       }
 
@@ -265,13 +244,9 @@ export default {
         const suiteId = this.selectedSuite.Id
         const slots = this.dateAvailability.suite_availability[suiteId]
         if (!slots) {
-          console.log(`Arrival ${arrivalTime}: DISABLED (no data for selected suite ${suiteId.substring(0, 8)})`)
           return true
         }
         const hasSlotWithThisArrival = slots.some(slot => slot.arrival === arrivalTime)
-        const status = hasSlotWithThisArrival ? 'ENABLED' : 'DISABLED'
-        const slotsForThisTime = slots.filter(slot => slot.arrival === arrivalTime)
-        console.log(`${arrivalTime} arrival: ${status} | ${slotsForThisTime.length} slot(s) available | suite ${suiteId.substring(0, 8)}`)
         return !hasSlotWithThisArrival
       }
 
@@ -280,12 +255,10 @@ export default {
         const slots = this.dateAvailability.suite_availability[suiteId]
         const hasSlotWithThisArrival = slots.some(slot => slot.arrival === arrivalTime)
         if (hasSlotWithThisArrival) {
-          console.log(`Arrival ${arrivalTime}: ENABLED (available in suite ${suiteId.substring(0, 8)})`)
           return false // At least one slot available with this arrival time
         }
       }
 
-      console.log(`Arrival ${arrivalTime}: DISABLED (no slots available)`)
       return true // No slots available with this arrival time
     },
 
@@ -305,9 +278,6 @@ export default {
         // If no arrival time selected, check if this departure time is used in any available slot for this suite
         if (!this.selectedArrival) {
           const hasSlotWithThisDeparture = slots.some(slot => slot.departure === departureTime)
-          const status = hasSlotWithThisDeparture ? 'ENABLED' : 'DISABLED'
-          const slotsForThisTime = slots.filter(slot => slot.departure === departureTime)
-          console.log(`${departureTime} departure: ${status} | ${slotsForThisTime.length} slot(s) available | suite ${suiteId.substring(0, 8)}`)
           return !hasSlotWithThisDeparture
         }
 
@@ -315,8 +285,6 @@ export default {
         const hasMatchingSlot = slots.some(slot =>
           slot.arrival === this.selectedArrival && slot.departure === departureTime
         )
-        const status = hasMatchingSlot ? 'ENABLED' : 'DISABLED'
-        console.log(`${this.selectedArrival}→${departureTime}: ${status} | suite ${suiteId.substring(0, 8)}`)
         return !hasMatchingSlot
       }
 

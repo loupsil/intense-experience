@@ -115,8 +115,6 @@ export default {
           }
         }, 150)
 
-        console.log('Creating payment request for reservation:', this.reservation.Id)
-
         // Prepare payment request data
         const paymentRequestData = {
           ClientToken: "E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D",
@@ -138,8 +136,6 @@ export default {
           ]
         }
 
-        console.log('Payment request data:', paymentRequestData)
-
         // Make API call to create payment request
         const response = await fetch('/api/payment-request', {
           method: 'POST',
@@ -154,7 +150,6 @@ export default {
         }
 
         const data = await response.json()
-        console.log('Payment request response:', data)
 
         if (!data.PaymentRequests || !data.PaymentRequests[0] || !data.PaymentRequests[0].Id) {
           throw new Error('Invalid payment request response')
@@ -162,12 +157,9 @@ export default {
 
         const paymentRequestId = data.PaymentRequests[0].Id
         this.paymentRequestId = paymentRequestId
-        console.log('Payment request ID:', paymentRequestId)
 
         // Construct payment URL
         this.paymentUrl = `https://app.mews-demo.com/navigator/payment-requests/detail/${paymentRequestId}?ccy=EUR&language=fr-FR`
-
-        console.log('Opening payment URL in new tab:', this.paymentUrl)
 
         // Complete progress
         clearInterval(this.progressInterval)
@@ -186,8 +178,6 @@ export default {
 
 
     openPayment() {
-      console.log('Opening payment window...')
-
       // Open payment URL in new tab
       this.paymentWindow = window.open(this.paymentUrl, '_blank')
 
@@ -197,7 +187,6 @@ export default {
     },
 
     onPaymentCompleted() {
-      console.log('User confirmed payment completion - resetting booking')
       // Reset the booking process to start over
       this.goHome()
     },

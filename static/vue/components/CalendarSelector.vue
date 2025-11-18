@@ -257,15 +257,9 @@ export default {
     },
     selectedSuite: {
       handler(newSuite, oldSuite) {
-        console.log('🔄 selectedSuite changed:', {
-          oldSuite: oldSuite ? oldSuite.Id : null,
-          newSuite: newSuite ? newSuite.Id : null
-        })
-
         // Clear current availability when suite selection changes
         // This ensures we fetch fresh availability data for the selected suite
         if (newSuite !== oldSuite) {
-          console.log('🔄 Clearing current availability and refetching data')
           this.currentAvailability = {}
           // Refetch availability for currently displayed dates
           this.fetchAvailabilityForDisplayedDates()
@@ -287,7 +281,6 @@ export default {
       const requestId = Date.now() + Math.random()
       this.currentRequestId = requestId
 
-      console.log('🔄 Setting availabilityLoading = true')
       this.availabilityLoading = true
 
       // Determine which endpoint to use based on booking type
@@ -301,14 +294,6 @@ export default {
         booking_type: this.selectedBookingType,
         suite_id: this.selectedSuite ? this.selectedSuite.Id : null
       }
-
-      console.log('📡 fetchBulkAvailability request:', {
-        requestId,
-        endpoint,
-        dates: dates.length,
-        selectedSuite: this.selectedSuite ? this.selectedSuite.Id : null,
-        requestData
-      })
 
       try {
         const response = await fetch(endpoint, {
@@ -324,16 +309,9 @@ export default {
         }
 
         const data = await response.json()
-        console.log('📡 fetchBulkAvailability response:', {
-          requestId,
-          status: data.status,
-          datesReturned: Object.keys(data.availability || {}).length,
-          sampleData: data.availability ? data.availability[Object.keys(data.availability)[0]] : null
-        })
 
         // Check if this response is still for the current request
         if (this.currentRequestId !== requestId) {
-          console.log('📡 Ignoring stale response for request:', requestId)
           return
         }
 
@@ -380,7 +358,6 @@ export default {
       } finally {
         // Only update loading state if this is still the current request
         if (this.currentRequestId === requestId) {
-          console.log('🔄 Setting availabilityLoading = false')
           this.availabilityLoading = false
         }
       }
