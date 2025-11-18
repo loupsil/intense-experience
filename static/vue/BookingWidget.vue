@@ -57,6 +57,7 @@
         <CalendarSelector
           :service="selectedService"
           :booking-type="bookingType"
+          :selected-suite="selectedSuite"
           @date-selected="handleDateSelection"
           @dates-confirmed="nextStep"
         />
@@ -77,8 +78,8 @@
         </div>
       </div>
 
-      <!-- Step 4: Suite Selection (only for general access) -->
-      <div v-if="currentStep === 4 && !preselectedSuite" class="step">
+      <!-- Step 4: Suite Selection (only if not preselected) -->
+      <div v-if="currentStep === 4 && !preselectedSuite && !preselectedSuiteId" class="step">
         <h2>Choisissez votre suite</h2>
         <SuiteSelector
           :suites="availableSuites"
@@ -86,8 +87,10 @@
           :service-type="getServiceType()"
           :start-date="selectedDates.start"
           :end-date="selectedDates.end"
+          :pricing="suitePricing"
           @suite-selected="selectSuite"
           @pricing-updated="updateSuitePricing"
+          @pricing-requested="handlePricingRequest"
         />
         <div class="step-navigation">
           <button class="prev-btn" @click="prevStep">Retour</button>
@@ -220,9 +223,17 @@ export default {
       type: Object,
       default: null
     },
+    preselectedSuiteId: {
+      type: String,
+      default: ''
+    },
+    preselectedServiceId: {
+      type: String,
+      default: ''
+    },
     accessPoint: {
       type: String,
-      default: 'general' 
+      default: 'general'
     }
   },
   data() {
@@ -257,8 +268,32 @@ export default {
   },
   async mounted() {
     await this.loadServices()
-    if (this.preselectedSuite) {
-      this.currentStep = 2 // Skip suite selection
+
+    // Handle preselected service
+    if (this.preselectedServiceId) {
+      const service = this.services.find(s => s.Id === this.preselectedServiceId)
+      if (service) {
+        this.selectService(service)
+        this.currentStep = 2 // Skip service selection
+      }
+    }
+
+    // Handle preselected suite (either from prop or URL parameter)
+    if (this.preselectedSuite || this.preselectedSuiteId) {
+      if (this.preselectedSuite) {
+        this.selectedSuite = this.preselectedSuite
+      } else if (this.preselectedSuiteId) {
+        await this.loadPreselectedSuite()
+      }
+
+      // Don't skip calendar step - always show it so user can choose dates
+      // Only skip suite selection step (step 4)
+      // If we're at step 2 (calendar), stay there
+      // If we're at step 1, go to step 2 (calendar)
+      if (this.currentStep === 1) {
+        this.currentStep = 2
+      }
+      // If we're at step 2, stay at step 2 (calendar) - user needs to select dates
     }
   },
   methods: {
@@ -284,6 +319,149 @@ export default {
       }
     },
 
+    async loadPreselectedSuite() {
+      try {
+        // We need to determine the service ID to fetch suites
+        const serviceId = this.selectedService?.Id || this.preselectedServiceId
+        if (!serviceId) return
+
+        const response = await fetch(`/intense_experience-api/suites?service_id=${serviceId}`)
+        const data = await response.json()
+
+        if (data.status === 'success' && data.suites) {
+          const suite = data.suites.find(s => s.Id === this.preselectedSuiteId)
+          if (suite) {
+            this.selectedSuite = suite
+            // Pricing will be loaded when dates are selected in handleDateSelection
+          }
+        }
+      } catch (error) {
+        console.error('Error loading preselected suite:', error)
+      }
+    },
+
+    async handlePricingRequest(requestData) {
+      console.log('BookingWidget: Handling pricing request from SuiteSelector:', requestData)
+
+      const { serviceType, startDate, endDate } = requestData
+      if (!startDate || !endDate) {
+        console.log('BookingWidget: Missing dates for pricing request')
+        return
+      }
+
+      try {
+        const rateId = this.getRateId()
+        if (!rateId) {
+          console.error('BookingWidget: No rate ID available for service type')
+          return
+        }
+
+        const response = await fetch('/intense_experience-api/pricing', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            rate_id: rateId,
+            start_date: startDate,
+            end_date: endDate
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const result = await response.json()
+        if (result.status === 'success') {
+          // Store pricing data by category ID (same format as before)
+          const pricing = {}
+          if (Array.isArray(result.pricing)) {
+            result.pricing.forEach(categoryPrice => {
+              pricing[categoryPrice.CategoryId] = categoryPrice
+            })
+          }
+
+          console.log('BookingWidget: Pricing loaded for SuiteSelector:', pricing)
+          // Update suite pricing which will trigger calculateSuitePricing
+          this.updateSuitePricing(pricing)
+        } else {
+          console.error('BookingWidget: Failed to load pricing for SuiteSelector:', result.error)
+        }
+      } catch (error) {
+        console.error('BookingWidget: Error loading pricing for SuiteSelector:', error)
+      }
+    },
+
+    async loadSuitePricing() {
+      if (!this.selectedService || !this.selectedSuite || !this.selectedDates.start || !this.selectedDates.end) {
+        console.log('BookingWidget: loadSuitePricing - missing required data')
+        return
+      }
+
+      try {
+        const rateId = this.getRateId()
+        if (!rateId) {
+          console.error('BookingWidget: No rate ID available for service type')
+          return
+        }
+
+        console.log('BookingWidget: Loading pricing for preselected suite:', {
+          suite: this.selectedSuite.Names?.['fr-FR'] || this.selectedSuite.Name,
+          service: this.selectedService.Names?.['fr-FR'] || this.selectedService.Name,
+          rateId: rateId,
+          startDate: this.selectedDates.start,
+          endDate: this.selectedDates.end
+        })
+
+        const response = await fetch('/intense_experience-api/pricing', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            rate_id: rateId,
+            start_date: this.selectedDates.start,
+            end_date: this.selectedDates.end
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const result = await response.json()
+        if (result.status === 'success') {
+          // Store pricing data by category ID (same format as SuiteSelector)
+          const pricing = {}
+          if (Array.isArray(result.pricing)) {
+            result.pricing.forEach(categoryPrice => {
+              pricing[categoryPrice.CategoryId] = categoryPrice
+            })
+          }
+
+          console.log('BookingWidget: Pricing loaded for preselected suite:', pricing)
+          // Update suite pricing which will trigger calculateSuitePricing
+          this.updateSuitePricing(pricing)
+        } else {
+          console.error('BookingWidget: Failed to load pricing:', result.error)
+        }
+      } catch (error) {
+        console.error('BookingWidget: Error loading suite pricing:', error)
+      }
+    },
+
+    getRateId() {
+      // Return appropriate rate ID based on service type (same as SuiteSelector)
+      const serviceType = this.getServiceType()
+      if (serviceType === 'nuitée') {
+        return 'ed9391ac-b184-4876-8cc1-b3850108b8b0' // Tarif Suites nuitée
+      } else if (serviceType === 'journée') {
+        return 'c3c2109d-984a-4ad4-978e-b3850108b8ad' // TARIF JOURNEE EN SEMAINE
+      }
+      return null
+    },
+
     selectService(service) {
       this.selectedService = service
       // JOURNEE service ID
@@ -293,10 +471,15 @@ export default {
       this.selectedOptions = []
     },
 
-    handleDateSelection(dates) {
+    async handleDateSelection(dates) {
       this.selectedDates = {
         start: dates.start,
         end: dates.end
+      }
+
+      // Load pricing for preselected suite when dates are selected
+      if (this.selectedSuite && !this.suitePricing[this.selectedSuite.Id]) {
+        await this.loadSuitePricing()
       }
     },
 
@@ -392,13 +575,25 @@ export default {
       console.log('Selected service:', this.selectedService?.Id)
       console.log('Booking type:', this.bookingType)
       console.log('Available suites count:', this.availableSuites?.length || 0)
+      console.log('Preselected suite ID:', this.preselectedSuiteId)
+      console.log('Selected suite ID:', this.selectedSuite?.Id)
 
       if (!this.selectedDates.start || !this.selectedDates.end) {
         console.warn('FRONTEND: No dates selected - aborting availability check')
         return
       }
 
-      if (!this.availableSuites || this.availableSuites.length === 0) {
+      // Determine which suites to check availability for
+      let suitesToCheck = []
+      if (this.selectedSuite) {
+        // If a suite is already selected (preselected), only check that one
+        suitesToCheck = [this.selectedSuite]
+        console.log('FRONTEND: Checking availability for preselected suite only:', this.selectedSuite.Id)
+      } else if (this.availableSuites && this.availableSuites.length > 0) {
+        // Otherwise check all available suites
+        suitesToCheck = this.availableSuites
+        console.log(`FRONTEND: Checking availability for ${this.availableSuites.length} suite(s)`)
+      } else {
         console.warn('FRONTEND: No suites available to check - aborting availability check')
         return
       }
@@ -406,8 +601,7 @@ export default {
       this.loadingMessage = 'Vérification des disponibilités...'
 
       try {
-        console.log(`FRONTEND: Checking availability for ${this.availableSuites.length} suite(s)`)
-        for (const suite of this.availableSuites) {
+        for (const suite of suitesToCheck) {
           try {
             console.log(`FRONTEND: Checking suite: ${suite.Id} (${suite.Names?.['fr-FR'] || suite.Name})`)
             const payload = {
@@ -446,7 +640,7 @@ export default {
             this.suiteAvailability[suite.Id] = false
           }
         }
-        console.log('FRONTEND: Availability check complete for all suites')
+        console.log(`FRONTEND: Availability check complete for ${suitesToCheck.length} suite(s)`)
         console.log('FRONTEND: Final availability results:', this.suiteAvailability)
       } catch (error) {
         console.error('FRONTEND: Error in availability check:', error)
@@ -608,7 +802,14 @@ export default {
       } else if (this.currentStep === 3) {
         if (this.accessPoint === 'general') {
           await this.loadSuites()
-          this.currentStep = 4
+          // Skip suite selection if suite is preselected
+          if (this.selectedSuite) {
+            this.loadProducts()
+            this.calculateOptionsPricing()
+            this.currentStep = 5
+          } else {
+            this.currentStep = 4
+          }
         } else {
           this.loadProducts()
           this.calculateOptionsPricing()

@@ -33,11 +33,11 @@
                     :key="date.toISOString()"
                     class="calendar-cell"
                     :class="{
-                      'selected': isDateSelected(date),
-                      'available': isDateAvailable(date),
-                      'unavailable': !isDateAvailable(date),
-                      'past': isDateInPast(date),
-                      'other-month': !isDateInCurrentMonth(date, currentMonth),
+                      'selected': !availabilityLoading && isDateSelected(date),
+                      'available': !availabilityLoading && isDateAvailable(date),
+                      'unavailable': !availabilityLoading && !isDateAvailable(date),
+                      'past': !availabilityLoading && isDateInPast(date),
+                      'other-month': !availabilityLoading && !isDateInCurrentMonth(date, currentMonth),
                       'loading': availabilityLoading
                     }"
                     @click="!availabilityLoading && selectDate(date)"
@@ -64,11 +64,11 @@
                     :key="date.toISOString()"
                     class="calendar-cell"
                     :class="{
-                      'selected': isDateSelected(date),
-                      'available': isDateAvailable(date),
-                      'unavailable': !isDateAvailable(date),
-                      'past': isDateInPast(date),
-                      'other-month': !isDateInCurrentMonth(date, nextMonth),
+                      'selected': !availabilityLoading && isDateSelected(date),
+                      'available': !availabilityLoading && isDateAvailable(date),
+                      'unavailable': !availabilityLoading && !isDateAvailable(date),
+                      'past': !availabilityLoading && isDateInPast(date),
+                      'other-month': !availabilityLoading && !isDateInCurrentMonth(date, nextMonth),
                       'loading': availabilityLoading
                     }"
                     @click="!availabilityLoading && selectDate(date)"
@@ -112,10 +112,10 @@
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': isDateAvailable(date),
-                      'unavailable': !isDateAvailable(date),
-                      'past': isDateInPast(date),
-                      'other-month': !isDateInCurrentMonth(date, currentMonth),
+                      'available': !availabilityLoading && isDateAvailable(date),
+                      'unavailable': !availabilityLoading && !isDateAvailable(date),
+                      'past': !availabilityLoading && isDateInPast(date),
+                      'other-month': !availabilityLoading && !isDateInCurrentMonth(date, currentMonth),
                       'loading': availabilityLoading
                     }"
                     @click="!availabilityLoading && selectNightDate(date)"
@@ -145,10 +145,10 @@
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': isDateAvailable(date),
-                      'unavailable': !isDateAvailable(date),
-                      'past': isDateInPast(date),
-                      'other-month': !isDateInCurrentMonth(date, nextMonth),
+                      'available': !availabilityLoading && isDateAvailable(date),
+                      'unavailable': !availabilityLoading && !isDateAvailable(date),
+                      'past': !availabilityLoading && isDateInPast(date),
+                      'other-month': !availabilityLoading && !isDateInCurrentMonth(date, nextMonth),
                       'loading': availabilityLoading
                     }"
                     @click="!availabilityLoading && selectNightDate(date)"
@@ -170,6 +170,7 @@
           :selected-dates="selectedBookingType === 'night' ? selectedDates : { start: null, end: null }"
           :date-availability="getDateAvailability(selectedDates.start)"
           :service="service"
+          :selected-suite="selectedSuite"
           @time-selected="handleTimeSelection"
           @book-suite="confirmSelection"
         />
@@ -205,6 +206,10 @@ export default {
     bookingType: {
       type: String,
       default: 'day'
+    },
+    selectedSuite: {
+      type: Object,
+      default: null
     }
   },
   data() {
@@ -215,8 +220,9 @@ export default {
       checkInDate: '',
       checkOutDate: '',
       availableDates: [],
-      dateAvailabilityCache: {}, // Cache for availability data
       availabilityLoading: false,
+      currentAvailability: {}, // Current availability data (replaced on each fetch)
+      currentRequestId: null, // Track current request to prevent stale responses
       minDate: new Date().toISOString().split('T')[0],
       currentMonth: new Date(),
       weekDays: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
@@ -244,7 +250,26 @@ export default {
       handler(newType) {
         this.selectedBookingType = newType
         this.resetSelection()
+        // Clear current availability when booking type changes
+        this.currentAvailability = {}
         // Calendar is now always displayed for both booking types
+      }
+    },
+    selectedSuite: {
+      handler(newSuite, oldSuite) {
+        console.log('🔄 selectedSuite changed:', {
+          oldSuite: oldSuite ? oldSuite.Id : null,
+          newSuite: newSuite ? newSuite.Id : null
+        })
+
+        // Clear current availability when suite selection changes
+        // This ensures we fetch fresh availability data for the selected suite
+        if (newSuite !== oldSuite) {
+          console.log('🔄 Clearing current availability and refetching data')
+          this.currentAvailability = {}
+          // Refetch availability for currently displayed dates
+          this.fetchAvailabilityForDisplayedDates()
+        }
       }
     }
   },
@@ -258,12 +283,32 @@ export default {
     async fetchBulkAvailability(dates) {
       if (!this.service || !dates || dates.length === 0) return
 
+      // Generate a unique request ID for this request
+      const requestId = Date.now() + Math.random()
+      this.currentRequestId = requestId
+
+      console.log('🔄 Setting availabilityLoading = true')
       this.availabilityLoading = true
 
       // Determine which endpoint to use based on booking type
-      const endpoint = this.selectedBookingType === 'night' 
+      const endpoint = this.selectedBookingType === 'night'
         ? '/intense_experience-api/bulk-availability-nuitee'
         : '/intense_experience-api/bulk-availability-journee'
+
+      const requestData = {
+        service_id: this.service.Id,
+        dates: dates,
+        booking_type: this.selectedBookingType,
+        suite_id: this.selectedSuite ? this.selectedSuite.Id : null
+      }
+
+      console.log('📡 fetchBulkAvailability request:', {
+        requestId,
+        endpoint,
+        dates: dates.length,
+        selectedSuite: this.selectedSuite ? this.selectedSuite.Id : null,
+        requestData
+      })
 
       try {
         const response = await fetch(endpoint, {
@@ -271,11 +316,7 @@ export default {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            service_id: this.service.Id,
-            dates: dates,
-            booking_type: this.selectedBookingType
-          })
+          body: JSON.stringify(requestData)
         })
 
         if (!response.ok) {
@@ -283,14 +324,28 @@ export default {
         }
 
         const data = await response.json()
+        console.log('📡 fetchBulkAvailability response:', {
+          requestId,
+          status: data.status,
+          datesReturned: Object.keys(data.availability || {}).length,
+          sampleData: data.availability ? data.availability[Object.keys(data.availability)[0]] : null
+        })
+
+        // Check if this response is still for the current request
+        if (this.currentRequestId !== requestId) {
+          console.log('📡 Ignoring stale response for request:', requestId)
+          return
+        }
+
         if (data.status === 'success' && data.availability) {
-          // Update cache with new availability data
-          Object.assign(this.dateAvailabilityCache, data.availability)
+          // Replace current availability with new data
+          this.currentAvailability = data.availability
         } else {
           console.error('Bulk availability failed:', data.error)
           // Mark dates as unavailable if the API fails
+          const errorAvailability = {}
           dates.forEach(dateStr => {
-            this.dateAvailabilityCache[dateStr] = {
+            errorAvailability[dateStr] = {
               available: false,
               total_suites: 0,
               booked_suites: 0,
@@ -299,12 +354,17 @@ export default {
               error: true
             }
           })
+          this.currentAvailability = errorAvailability
         }
+
+        // Use nextTick to ensure DOM updates happen atomically
+        await this.$nextTick()
       } catch (error) {
         console.error('Failed to fetch availability:', error)
         // Mark dates as unavailable on error for safety
+        const errorAvailability = {}
         dates.forEach(dateStr => {
-          this.dateAvailabilityCache[dateStr] = {
+          errorAvailability[dateStr] = {
             available: false,
             total_suites: 0,
             booked_suites: 0,
@@ -313,8 +373,16 @@ export default {
             error: true
           }
         })
+        this.currentAvailability = errorAvailability
+
+        // Use nextTick to ensure DOM updates happen atomically
+        await this.$nextTick()
       } finally {
-        this.availabilityLoading = false
+        // Only update loading state if this is still the current request
+        if (this.currentRequestId === requestId) {
+          console.log('🔄 Setting availabilityLoading = false')
+          this.availabilityLoading = false
+        }
       }
     },
 
@@ -340,21 +408,17 @@ export default {
         }
       })
 
-      // Filter out dates we already have in cache
-      const uncachedDates = displayedDates.filter(dateStr => !this.dateAvailabilityCache[dateStr])
-
-      if (uncachedDates.length > 0) {
-        await this.fetchBulkAvailability(uncachedDates)
+      // Fetch availability for all displayed dates
+      if (displayedDates.length > 0) {
+        await this.fetchBulkAvailability(displayedDates)
       }
     },
 
     isDateAvailable(date) {
       if (this.isDateInPast(date)) return false
 
-      // Normalize to UTC midnight to match API keys
-      const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-      const dateStr = utcDate.toISOString()
-      const availability = this.dateAvailabilityCache[dateStr]
+      // Use getDateAvailability which handles suite filtering
+      const availability = this.getDateAvailability(date)
 
       if (!availability) {
         // If we don't have availability data yet, show as unavailable (will load)
@@ -390,7 +454,7 @@ export default {
         // Ensure availability data is loaded for this date (normalize to UTC midnight)
         const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
         const dateStr = utcDate.toISOString()
-        if (!this.dateAvailabilityCache[dateStr]) {
+        if (!this.currentAvailability[dateStr]) {
           await this.fetchBulkAvailability([dateStr])
         }
       }
@@ -575,20 +639,11 @@ export default {
 
     getDateAvailability(date) {
       if (!date) return null
-      // Normalize to UTC midnight to match cache keys
+      // Normalize to UTC midnight to match availability keys
       const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
       const dateStr = utcDate.toISOString()
-      const availability = this.dateAvailabilityCache[dateStr] || null
-      
-      // Debug log
-      if (date.getMonth() === 11 && date.getDate() === 17) {
-        console.log('🔍 getDateAvailability for Dec 17:')
-        console.log('   Input date:', date)
-        console.log('   UTC dateStr:', dateStr)
-        console.log('   Availability:', availability)
-        console.log('   Cache keys:', Object.keys(this.dateAvailabilityCache))
-      }
-      
+      const availability = this.currentAvailability[dateStr] || null
+
       return availability
     }
   }
@@ -872,6 +927,23 @@ export default {
 .calendar-cell.loading {
   opacity: 0.6;
   pointer-events: none;
+  background-color: #f8f9fa !important; /* Neutral gray background during loading */
+  color: #6c757d !important; /* Neutral text color */
+  border-color: transparent !important;
+}
+
+/* Loading state MUST override all other states - use !important with high specificity */
+div.calendar-cell.loading,
+.calendar-cell.loading.available,
+.calendar-cell.loading.unavailable,
+.calendar-cell.loading.past,
+.calendar-cell.available.loading,
+.calendar-cell.unavailable.loading,
+.calendar-cell.past.loading {
+  background-color: #f8f9fa !important;
+  color: #6c757d !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 .date-number {

@@ -96,6 +96,10 @@ export default {
     service: {
       type: Object,
       default: null
+    },
+    selectedSuite: {
+      type: Object,
+      default: null
     }
   },
   data() {
@@ -151,9 +155,21 @@ export default {
       },
       immediate: true
     },
-    dateAvailability: {
+      dateAvailability: {
       handler(newVal) {
         console.log('Date availability updated:', newVal)
+        // Log available slots for selected suite
+        if (this.selectedSuite && newVal?.suite_availability) {
+          const suiteId = this.selectedSuite.Id
+          const slots = newVal.suite_availability[suiteId]
+          if (slots && slots.length > 0) {
+            const arrivals = [...new Set(slots.map(s => s.arrival))].sort()
+            const departures = [...new Set(slots.map(s => s.departure))].sort()
+            console.log(`Available for suite ${suiteId.substring(0, 8)}: arrivals=[${arrivals.join(',')}] departures=[${departures.join(',')}] (${slots.length} total slots)`)
+          } else {
+            console.log(`No slots available for suite ${suiteId.substring(0, 8)}`)
+          }
+        }
         // Reset selections if currently selected times are now unavailable
         if (this.selectedArrival && this.isArrivalTimeDisabled(this.selectedArrival)) {
           this.selectedArrival = ''
@@ -244,7 +260,22 @@ export default {
         return false
       }
 
-      // Check if there's at least one suite with at least one available slot starting at this arrival time
+      // If a specific suite is selected, only check that suite
+      if (this.selectedSuite) {
+        const suiteId = this.selectedSuite.Id
+        const slots = this.dateAvailability.suite_availability[suiteId]
+        if (!slots) {
+          console.log(`Arrival ${arrivalTime}: DISABLED (no data for selected suite ${suiteId.substring(0, 8)})`)
+          return true
+        }
+        const hasSlotWithThisArrival = slots.some(slot => slot.arrival === arrivalTime)
+        const status = hasSlotWithThisArrival ? 'ENABLED' : 'DISABLED'
+        const slotsForThisTime = slots.filter(slot => slot.arrival === arrivalTime)
+        console.log(`${arrivalTime} arrival: ${status} | ${slotsForThisTime.length} slot(s) available | suite ${suiteId.substring(0, 8)}`)
+        return !hasSlotWithThisArrival
+      }
+
+      // If no suite is selected, check if there's at least one suite with at least one available slot starting at this arrival time
       for (const suiteId in this.dateAvailability.suite_availability) {
         const slots = this.dateAvailability.suite_availability[suiteId]
         const hasSlotWithThisArrival = slots.some(slot => slot.arrival === arrivalTime)
@@ -263,6 +294,34 @@ export default {
         return false
       }
 
+      // If a specific suite is selected, only check that suite
+      if (this.selectedSuite) {
+        const suiteId = this.selectedSuite.Id
+        const slots = this.dateAvailability.suite_availability[suiteId]
+        if (!slots) {
+          return true
+        }
+
+        // If no arrival time selected, check if this departure time is used in any available slot for this suite
+        if (!this.selectedArrival) {
+          const hasSlotWithThisDeparture = slots.some(slot => slot.departure === departureTime)
+          const status = hasSlotWithThisDeparture ? 'ENABLED' : 'DISABLED'
+          const slotsForThisTime = slots.filter(slot => slot.departure === departureTime)
+          console.log(`${departureTime} departure: ${status} | ${slotsForThisTime.length} slot(s) available | suite ${suiteId.substring(0, 8)}`)
+          return !hasSlotWithThisDeparture
+        }
+
+        // If arrival time is selected, check if this combination is available for this suite
+        const hasMatchingSlot = slots.some(slot =>
+          slot.arrival === this.selectedArrival && slot.departure === departureTime
+        )
+        const status = hasMatchingSlot ? 'ENABLED' : 'DISABLED'
+        console.log(`${this.selectedArrival}→${departureTime}: ${status} | suite ${suiteId.substring(0, 8)}`)
+        return !hasMatchingSlot
+      }
+
+      // If no suite is selected, check across all suites
+
       // If no arrival time selected, check if this departure time is used in any available slot
       if (!this.selectedArrival) {
         for (const suiteId in this.dateAvailability.suite_availability) {
@@ -278,7 +337,7 @@ export default {
       // If arrival time is selected, check if this combination is available
       for (const suiteId in this.dateAvailability.suite_availability) {
         const slots = this.dateAvailability.suite_availability[suiteId]
-        const hasMatchingSlot = slots.some(slot => 
+        const hasMatchingSlot = slots.some(slot =>
           slot.arrival === this.selectedArrival && slot.departure === departureTime
         )
         if (hasMatchingSlot) {

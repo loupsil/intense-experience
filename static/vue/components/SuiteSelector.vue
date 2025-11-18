@@ -90,29 +90,25 @@ export default {
     endDate: {
       type: String,
       required: true
+    },
+    pricing: {
+      type: Object,
+      default: () => ({})
     }
   },
   data() {
     return {
       selectedSuite: null,
-      pricing: {}, // Will store pricing data for each suite
       loading: false
     }
   },
   watch: {
-    serviceType: 'fetchPricing',
-    startDate: 'fetchPricing',
-    endDate: 'fetchPricing',
-    pricing: {
-      handler(newPricing) {
-        this.$emit('pricing-updated', newPricing)
-      },
-      deep: true,
-      immediate: true
-    }
+    serviceType: 'requestPricing',
+    startDate: 'requestPricing',
+    endDate: 'requestPricing'
   },
   mounted() {
-    this.fetchPricing()
+    this.requestPricing()
   },
   methods: {
     selectSuite(suite) {
@@ -122,53 +118,13 @@ export default {
       }
     },
 
-    async fetchPricing() {
-      this.loading = true
-      try {
-        const rateId = this.getRateId()
-        const response = await fetch('/intense_experience-api/pricing', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            rate_id: rateId,
-            start_date: this.startDate,
-            end_date: this.endDate
-          })
-        })
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        const result = await response.json()
-        if (result.status === 'success') {
-          // Store pricing data by category ID
-          this.pricing = {}
-          if (Array.isArray(result.pricing)) {
-            result.pricing.forEach(categoryPrice => {
-              this.pricing[categoryPrice.CategoryId] = categoryPrice
-            })
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching pricing:', error)
-        // Fallback to default pricing if API fails
-        this.pricing = {}
-      } finally {
-        this.loading = false
-      }
-    },
-
-    getRateId() {
-      // Return appropriate rate ID based on service type
-      if (this.serviceType === 'nuitée') {
-        return 'ed9391ac-b184-4876-8cc1-b3850108b8b0' // Tarif Suites nuitée
-      } else if (this.serviceType === 'journée') {
-        return 'c3c2109d-984a-4ad4-978e-b3850108b8ad' // TARIF JOURNEE EN SEMAINE
-      }
-      return null
+    requestPricing() {
+      // Emit event to parent component to handle pricing
+      this.$emit('pricing-requested', {
+        serviceType: this.serviceType,
+        startDate: this.startDate,
+        endDate: this.endDate
+      })
     },
 
     getSuiteBasePrice(suite) {

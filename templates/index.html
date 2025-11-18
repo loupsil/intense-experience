@@ -35,6 +35,8 @@
                         <!-- Booking Widget -->
                         <booking-widget
                             access-point="general"
+                            :preselected-suite-id="suiteId"
+                            :preselected-service-id="serviceId"
                         ></booking-widget>
                     </div>
                 </section>
@@ -73,7 +75,10 @@
                     featuredSuites: [],
                     nightServiceId: '7ba0b732-93cc-477a-861d-b3850108b730', // NUITEE service ID
                     loading: true,
-                    error: null
+                    error: null,
+                    // URL parameters from Flask
+                    suiteId: '{{ suite_id or "" }}',
+                    serviceId: '{{ service_id or "" }}'
                 }
             },
             async mounted() {

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import uuid
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import pytz
 
 # Configure logging
 logging.basicConfig(
@@ -154,7 +155,8 @@ def check_bulk_availability_journee():
     data = request.json
     service_id = data.get('service_id')
     dates = data.get('dates')  # List of ISO date strings
-    
+    suite_id = data.get('suite_id')  # Optional: filter by specific suite
+
     if not all([service_id, dates]) or len(dates) == 0:
         logger.error("Missing required parameters")
         return jsonify({"error": "Missing required parameters", "status": "error"}), 400
@@ -171,14 +173,22 @@ def check_bulk_availability_journee():
         "IncludeDefault": False,
         "Limitation": {"Count": 100}
     }
-    
+
     suites_result = make_mews_request("resourceCategories/getAll", payload)
     if not suites_result or "ResourceCategories" not in suites_result:
         logger.error("Failed to fetch suites")
         return jsonify({"error": "Failed to fetch suites", "status": "error"}), 500
-    
+
     all_suites = [cat for cat in suites_result["ResourceCategories"]
                   if cat.get("Type") in ["Suite", "Room"] and cat.get("IsActive")]
+
+    # If a specific suite is selected, filter to only that suite
+    if suite_id:
+        all_suites = [suite for suite in all_suites if suite["Id"] == suite_id]
+        if not all_suites:
+            logger.warning(f"Selected suite {suite_id} not found in available suites")
+            return jsonify({"error": f"Selected suite {suite_id} not available", "status": "error"}), 400
+
     suite_ids = [suite["Id"] for suite in all_suites]
     
     logger.info(f"Found {len(suite_ids)} active suites: {suite_ids}")
@@ -249,8 +259,9 @@ def check_bulk_availability_journee():
                             continue
                         
                         # Create datetime objects for this slot (timezone-aware to match reservations)
-                        slot_start = datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()).replace(tzinfo=timezone.utc)
-                        slot_end = datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()).replace(tzinfo=timezone.utc)
+                        belgian_tz = pytz.timezone('Europe/Brussels')
+                        slot_start = belgian_tz.localize(datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()))
+                        slot_end = belgian_tz.localize(datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()))
                         slot_end_buffered = slot_end + timedelta(hours=CLEANING_BUFFER_HOURS)
                         
                         # Check if this slot conflicts with any reservation
@@ -395,6 +406,7 @@ def check_bulk_availability_nuitee():
     service_id = data.get('service_id')
     dates = data.get('dates')  # List of ISO date strings
     booking_type = data.get('booking_type', 'day')  # 'day' or 'night'
+    suite_id = data.get('suite_id')  # Optional: filter by specific suite
 
     if not all([service_id, dates]) or len(dates) == 0:
         logger.error("Missing required parameters")
@@ -421,6 +433,14 @@ def check_bulk_availability_nuitee():
     # Filter to only show suites (not buildings/floors)
     all_suites = [cat for cat in suites_result["ResourceCategories"]
                   if cat.get("Type") in ["Suite", "Room"] and cat.get("IsActive")]
+
+    # If a specific suite is selected, filter to only that suite
+    if suite_id:
+        all_suites = [suite for suite in all_suites if suite["Id"] == suite_id]
+        if not all_suites:
+            logger.warning(f"Selected suite {suite_id} not found in available suites")
+            return jsonify({"error": f"Selected suite {suite_id} not available", "status": "error"}), 400
+
     suite_ids = [suite["Id"] for suite in all_suites]
 
     logger.info(f"Found {len(suite_ids)} active suites: {suite_ids}")
@@ -479,21 +499,25 @@ def check_bulk_availability_nuitee():
             reservations = result["Reservations"]
             logger.info(f"Found {len(reservations)} reservations in chunk {chunk_index + 1}")
 
-            # Group reservations by date
+            # Group reservations by date with timezone-aware comparisons
+            belgian_tz = pytz.timezone('Europe/Brussels')
             reservations_by_date = {}
             for date_str in chunk_dates:
                 date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
                 reservations_by_date[date_str] = []
+
+                # Create date boundaries in Belgian timezone for accurate comparison
+                date_start = belgian_tz.localize(datetime.combine(date_obj, datetime.min.time()))
+                date_end = belgian_tz.localize(datetime.combine(date_obj + timedelta(days=1), datetime.min.time()))
 
                 # Filter reservations that overlap with this specific date
                 for reservation in reservations:
                     res_start = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
                     res_end = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
 
-                    # Check if reservation overlaps with this date
-                    if (res_start.date() <= date_obj < res_end.date() or
-                        res_start.date() == date_obj or
-                        (res_start.date() < date_obj and res_end.date() > date_obj)):
+                    # Check if reservation overlaps with this date (timezone-aware)
+                    # A reservation overlaps if it starts before the date ends AND ends after the date starts
+                    if res_start < date_end and res_end > date_start:
                         reservations_by_date[date_str].append(reservation)
 
             # Check availability for each date in this chunk
