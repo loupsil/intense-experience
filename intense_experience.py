@@ -643,23 +643,12 @@ def get_age_categories():
 def create_customer():
     """Create a new customer"""
     data = request.json
-    
-    logger.info("=" * 80)
-    logger.info("CREATE CUSTOMER - Request received")
-    logger.info("=" * 80)
-    logger.info(f"Raw request data: {data}")
-    
+
     # Support both snake_case and camelCase for frontend compatibility
     first_name = data.get('first_name') or data.get('firstName')
     last_name = data.get('last_name') or data.get('lastName')
     email = data.get('email')
     phone = data.get('phone')
-
-    logger.info(f"Parsed fields:")
-    logger.info(f"  First Name: {first_name}")
-    logger.info(f"  Last Name: {last_name}")
-    logger.info(f"  Email: {email}")
-    logger.info(f"  Phone: {phone}")
 
     if not all([first_name, last_name, email]):
         logger.error("Missing required customer information")
@@ -677,29 +666,19 @@ def create_customer():
         "OverwriteExisting": True  # Allow updating existing customer with same email
     }
 
-    logger.info(f"Mews API Payload: {payload}")
-    logger.info("Calling customers/add API...")
-
     result = make_mews_request("customers/add", payload)
-    
-    logger.info(f"Mews API Response: {result}")
-    
+
     if result:
         # Mews API returns the customer object directly, not wrapped in an array
         if "Id" in result:
             customer = result
-            logger.info(f"Customer created/updated successfully: {customer.get('Id')}")
-            logger.info("=" * 80)
             return jsonify({"customer": customer, "status": "success"})
         # Some endpoints may return as array
         elif "Customers" in result and result["Customers"]:
             customer = result["Customers"][0]
-            logger.info(f"Customer created/updated successfully: {customer.get('Id')}")
-            logger.info("=" * 80)
             return jsonify({"customer": customer, "status": "success"})
-    
+
     logger.error("Failed to create customer - no valid customer in response")
-    logger.info("=" * 80)
     return jsonify({"error": "Failed to create customer", "status": "error"}), 500
 
 def get_adult_age_category_for_service(service_id):
@@ -731,11 +710,6 @@ def create_reservation():
     """Create a reservation"""
     data = request.json
 
-    logger.info("=" * 80)
-    logger.info("CREATE RESERVATION - Request received")
-    logger.info("=" * 80)
-    logger.info(f"Raw request data: {data}")
-
     service_id = data.get('service_id')
     customer_id = data.get('customer_id')
     suite_id = data.get('suite_id')
@@ -744,16 +718,6 @@ def create_reservation():
     end_date = data.get('end_date')
     person_count = data.get('person_count', 2)
     options = data.get('options', [])
-
-    logger.info(f"Parsed reservation fields:")
-    logger.info(f"  Service ID: {service_id}")
-    logger.info(f"  Customer ID: {customer_id}")
-    logger.info(f"  Suite ID: {suite_id}")
-    logger.info(f"  Rate ID: {rate_id}")
-    logger.info(f"  Start Date: {start_date}")
-    logger.info(f"  End Date: {end_date}")
-    logger.info(f"  Person Count: {person_count}")
-    logger.info(f"  Options: {options}")
 
     if not all([service_id, customer_id, suite_id, rate_id, start_date, end_date]):
         logger.error("Missing required reservation parameters")
@@ -769,7 +733,7 @@ def create_reservation():
     try:
         start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
         end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-        
+
         if start_dt >= end_dt:
             logger.error(f"Invalid date range: StartUtc ({start_date}) must be before EndUtc ({end_date})")
             return jsonify({
@@ -782,10 +746,8 @@ def create_reservation():
 
     # Get the correct age category for the service
     age_category_id = get_adult_age_category_for_service(service_id)
-    logger.info(f"Using age category ID: {age_category_id} for service {service_id}")
 
     reservation_identifier = f"IE-{uuid.uuid4().hex[:8].upper()}"
-    logger.info(f"Generated reservation identifier: {reservation_identifier}")
 
     reservation_data = {
         "Identifier": reservation_identifier,
@@ -809,7 +771,6 @@ def create_reservation():
             }
             for option in options
         ]
-        logger.info(f"Added {len(options)} product orders to reservation")
 
     payload = {
         "Client": "Intense Experience Booking",
@@ -817,35 +778,24 @@ def create_reservation():
         "Reservations": [reservation_data]
     }
 
-    logger.info(f"Mews API Payload: {payload}")
-    logger.info("Calling reservations/add API...")
-
     result = make_mews_request("reservations/add", payload)
-    
-    logger.info(f"Mews API Response: {result}")
-    
+
     if result and "Reservations" in result and result["Reservations"]:
         # Mews returns: {"Reservations": [{"Identifier": "...", "Reservation": {...}}]}
         reservation_wrapper = result["Reservations"][0]
         reservation = reservation_wrapper.get("Reservation", reservation_wrapper)
         reservation_id = reservation.get('Id')
         identifier = reservation_wrapper.get('Identifier')
-        
-        logger.info(f"Reservation created successfully:")
-        logger.info(f"  Identifier: {identifier}")
-        logger.info(f"  Reservation ID: {reservation_id}")
-        logger.info("=" * 80)
-        
+
         return jsonify({
             "reservation": reservation,
             "identifier": identifier,
             "status": "success"
         })
-    
+
     logger.error("Failed to create reservation - no reservation in response")
     if result:
         logger.error(f"Response keys: {list(result.keys())}")
-    logger.info("=" * 80)
     return jsonify({"error": "Failed to create reservation", "status": "error"}), 500
 
 @intense_experience_bp.route('/api/payment-request', methods=['POST'])
