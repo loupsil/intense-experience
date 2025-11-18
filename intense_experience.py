@@ -733,15 +733,40 @@ def get_pricing():
     end_date = data.get('end_date')
     suite_id = data.get('suite_id')
 
+    logger.info("=" * 80)
+    logger.info("PRICING REQUEST RECEIVED")
+    logger.info("=" * 80)
+    logger.info(f"Rate ID: {rate_id}")
+    logger.info(f"Start Date: {start_date}")
+    logger.info(f"End Date: {end_date}")
+    logger.info(f"Suite ID: {suite_id}")
+
     if not all([rate_id, start_date, end_date]):
         return jsonify({"error": "Missing required parameters", "status": "error"}), 400
+
+    # For night bookings, set time to 23:00:00.000Z
+    # Rate ID for nuitée: 'ed9391ac-b184-4876-8cc1-b3850108b8b0'
+    if rate_id == 'ed9391ac-b184-4876-8cc1-b3850108b8b0':
+        # Extract date part and append 23:00:00.000Z for night bookings
+        first_time_unit = start_date.split('T')[0] + 'T23:00:00.000Z'
+        last_time_unit = end_date.split('T')[0] + 'T23:00:00.000Z'
+        logger.info(f"PRICING: Nuitée detected - adjusting time units to 23:00:00.000Z")
+        logger.info(f"PRICING: Original start_date: {start_date}, adjusted: {first_time_unit}")
+        logger.info(f"PRICING: Original end_date: {end_date}, adjusted: {last_time_unit}")
+    else:
+        # For day bookings, keep the original logic
+        first_time_unit = start_date
+        last_time_unit = end_date
+        logger.info(f"PRICING: Journée detected - using original time units")
+
+    logger.info(f"PRICING: Final payload time units - FirstTimeUnitStartUtc: {first_time_unit}, LastTimeUnitStartUtc: {last_time_unit}")
 
     payload = {
         "EnterpriseIds": [ENTERPRISE_ID],
         "Client": "Intense Experience Booking",
         "RateId": rate_id,
-        "FirstTimeUnitStartUtc": start_date,
-        "LastTimeUnitStartUtc": end_date
+        "FirstTimeUnitStartUtc": first_time_unit,
+        "LastTimeUnitStartUtc": last_time_unit
     }
 
     result = make_mews_request("rates/getPricing", payload)
