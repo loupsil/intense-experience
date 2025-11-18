@@ -471,6 +471,10 @@ export default {
       this.bookingType = service.Id === JOURNEE_ID ? 'day' : 'night'
       // Clear selected options when service changes to prevent invalid selections
       this.selectedOptions = []
+
+      // Emit service selection event to parent
+      const serviceType = service.Id === JOURNEE_ID ? 'journée' : 'nuitée'
+      this.$emit('service-selected', { service, serviceType })
     },
 
     async handleDateSelection(dates) {
@@ -849,9 +853,10 @@ export default {
   font-family: 'Arial', sans-serif;
   max-width: 800px;
   margin: 0 auto;
-  background: #fff;
+  background: var(--booking-section-background, #fff);
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  transition: background-color 0.5s ease;
 }
 
 .booking-container {
@@ -903,9 +908,10 @@ export default {
 }
 
 h2 {
-  color: #333;
+  color: var(--heading-text-color, #333);
   margin-bottom: 30px;
   text-align: center;
+  transition: color 0.5s ease;
 }
 
 .service-selection {
@@ -936,13 +942,15 @@ h2 {
 
 .service-card h3 {
   margin: 0 0 10px 0;
-  color: #333;
+  color: var(--heading-text-color, #333);
+  transition: color 0.5s ease;
 }
 
 .service-card p {
   margin: 10px 0;
-  color: #666;
+  color: var(--secondary-text-color, #666);
   font-size: 14px;
+  transition: color 0.5s ease;
 }
 
 .service-icon {
@@ -1029,10 +1037,11 @@ h2 {
 }
 
 .booking-summary {
-  background: #f8f9fa;
+  background: var(--booking-section-background, #f8f9fa);
   padding: 20px;
   border-radius: 8px;
   margin: 20px 0;
+  transition: background-color 0.5s ease;
 }
 
 .summary-item {
@@ -1109,19 +1118,21 @@ h2 {
 }
 
 .reservation-details {
-  background: #f8f9fa;
+  background: var(--booking-section-background, #f8f9fa);
   border-radius: 8px;
   padding: 25px;
   margin: 30px auto;
   max-width: 500px;
   text-align: left;
+  transition: background-color 0.5s ease;
 }
 
 .reservation-details h3 {
-  color: #333;
+  color: var(--heading-text-color, #333);
   margin-bottom: 20px;
   text-align: center;
   font-size: 20px;
+  transition: color 0.5s ease;
 }
 
 .detail-item {

@@ -37,6 +37,7 @@
                             access-point="general"
                             :preselected-suite-id="suiteId"
                             :preselected-service-id="serviceId"
+                            @service-selected="handleServiceSelection"
                         ></booking-widget>
                     </div>
                 </section>
@@ -78,13 +79,54 @@
                     error: null,
                     // URL parameters from Flask
                     suiteId: '{{ suite_id or "" }}',
-                    serviceId: '{{ service_id or "" }}'
+                    serviceId: '{{ service_id or "" }}',
+                    // Background theme based on selected service
+                    selectedServiceType: null // 'journée' or 'nuitée'
+                }
+            },
+            watch: {
+                selectedServiceType(newType) {
+                    this.updateBackgroundColors(newType)
                 }
             },
             async mounted() {
                 await this.loadSuites();
             },
             methods: {
+                handleServiceSelection(eventData) {
+                    this.selectedServiceType = eventData.serviceType
+                },
+
+                updateBackgroundColors(serviceType) {
+                    const root = document.documentElement
+
+                    if (serviceType === 'nuitée') {
+                        // Dark theme - light text
+                        root.style.setProperty('--app-background', '#0B0B0B')
+                        root.style.setProperty('--booking-section-background', '#0B0B0B')
+                        root.style.setProperty('--suites-showcase-background', '#0B0B0B')
+                        root.style.setProperty('--primary-text-color', '#ffffff')
+                        root.style.setProperty('--secondary-text-color', '#cccccc')
+                        root.style.setProperty('--heading-text-color', '#ffffff')
+                    } else if (serviceType === 'journée') {
+                        // Light theme - dark text
+                        root.style.setProperty('--app-background', '#E5E5DB')
+                        root.style.setProperty('--booking-section-background', '#E5E5DB')
+                        root.style.setProperty('--suites-showcase-background', '#E5E5DB')
+                        root.style.setProperty('--primary-text-color', '#333333')
+                        root.style.setProperty('--secondary-text-color', '#666666')
+                        root.style.setProperty('--heading-text-color', '#333333')
+                    } else {
+                        // Default/reset - light background, dark text
+                        root.style.setProperty('--app-background', '#f8f9fa')
+                        root.style.setProperty('--booking-section-background', '#ffffff')
+                        root.style.setProperty('--suites-showcase-background', '#f8f9fa')
+                        root.style.setProperty('--primary-text-color', '#333333')
+                        root.style.setProperty('--secondary-text-color', '#666666')
+                        root.style.setProperty('--heading-text-color', '#333333')
+                    }
+                },
+
                 async loadSuites() {
                     try {
                         this.loading = true;
