@@ -43,6 +43,10 @@ DAY_MAX_HOURS = 6
 ARRIVAL_TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
 DEPARTURE_TIMES = ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00']
 
+# Default check-in and check-out hours for nuitée bookings
+NIGHT_CHECK_IN_HOUR = 19  # 19:00 (7:00 PM)
+NIGHT_CHECK_OUT_HOUR = 10  # 10:00 (10:00 AM)
+
 def make_mews_request(endpoint, payload):
     """Make a request to Mews API"""
     url = f"{MEWS_BASE_URL}/{endpoint}"
@@ -868,6 +872,8 @@ def get_booking_limits():
         },
         'arrival_times': ARRIVAL_TIMES,
         'departure_times': DEPARTURE_TIMES,
+        'night_check_in_hour': NIGHT_CHECK_IN_HOUR,
+        'night_check_out_hour': NIGHT_CHECK_OUT_HOUR,
         'status': 'success'
     })
 

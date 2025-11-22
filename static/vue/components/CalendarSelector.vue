@@ -209,7 +209,10 @@ export default {
       minDate: new Date().toISOString().split('T')[0],
       currentMonth: new Date(),
       weekDays: ['M', 'T', 'W', 'T', 'F', 'S', 'S'],
-      selectionMode: 'start' // 'start' or 'end'
+      selectionMode: 'start', // 'start' or 'end'
+      nightCheckInHour: null,
+      nightCheckOutHour: null,
+      bookingLimitsLoaded: false
     }
   },
   computed: {
@@ -252,10 +255,29 @@ export default {
   },
   async mounted() {
     // Calendar is now always displayed for both day and night bookings
-    // Fetch availability for initially displayed dates
-    await this.fetchAvailabilityForDisplayedDates()
+    // Fetch booking limits and availability in parallel since availability doesn't depend on limits
+    await Promise.all([
+      this.fetchBookingLimits(),
+      this.fetchAvailabilityForDisplayedDates()
+    ])
   },
   methods: {
+
+    async fetchBookingLimits() {
+      try {
+        const response = await fetch('/intense_experience-api/booking-limits')
+        const data = await response.json()
+        if (data.status === 'success') {
+          // Update night booking hours from backend
+          this.nightCheckInHour = data.night_check_in_hour
+          this.nightCheckOutHour = data.night_check_out_hour
+          this.bookingLimitsLoaded = true
+        }
+      } catch (error) {
+        console.error('Failed to fetch booking limits from backend:', error)
+        this.bookingLimitsLoaded = true // Still mark as loaded to prevent infinite loading
+      }
+    },
 
     async fetchBulkAvailability(dates) {
       if (!this.service || !dates || dates.length === 0) return
@@ -500,7 +522,7 @@ export default {
       if (this.selectionMode === 'start' || !this.selectedDates.start) {
         // Selecting start date
         this.selectedDates.start = new Date(selectedDate)
-        this.selectedDates.start.setHours(19, 0, 0, 0)
+        this.selectedDates.start.setHours(this.nightCheckInHour, 0, 0, 0)
         this.selectedDates.end = null
         this.selectionMode = 'end'
       } else {
@@ -508,13 +530,13 @@ export default {
         if (selectedDate <= this.selectedDates.start) {
           // If selected date is before or same as start, reset start date
           this.selectedDates.start = new Date(selectedDate)
-          this.selectedDates.start.setHours(19, 0, 0, 0)
+          this.selectedDates.start.setHours(this.nightCheckInHour, 0, 0, 0)
           this.selectedDates.end = null
           this.selectionMode = 'end'
         } else {
           // Set end date
           this.selectedDates.end = new Date(selectedDate)
-          this.selectedDates.end.setHours(10, 0, 0, 0)
+          this.selectedDates.end.setHours(this.nightCheckOutHour, 0, 0, 0)
           this.selectionMode = 'start'
         }
       }
