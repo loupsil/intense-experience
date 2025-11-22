@@ -28,12 +28,19 @@
                     class="calendar-cell"
                     :class="{
                       'selected': isDateSelected(date),
-                      'available': isDateAvailable(date),
-                      'unavailable': !isDateAvailable(date),
+                      'available': isDateAvailable(date) && !isDatePartiallyAvailable(date),
+                      'partially-available': isDatePartiallyAvailable(date),
+                      'unavailable': !isDateAvailable(date) && !isDatePartiallyAvailable(date),
                       'past': isDateInPast(date),
                       'other-month': !isDateInCurrentMonth(date, currentMonth)
                     }"
                     @click="!availabilityLoading && selectDate(date)"
+                    :data-debug="(date.getDate() === 5 || date.getDate() === 18) && date.getMonth() === 11 ? JSON.stringify({
+                      day: date.getDate(),
+                      available: isDateAvailable(date),
+                      partiallyAvailable: isDatePartiallyAvailable(date),
+                      unavailable: !isDateAvailable(date) && !isDatePartiallyAvailable(date)
+                    }) : null"
                   >
                     <span class="date-number">{{ date.getDate() }}</span>
                   </div>
@@ -56,8 +63,9 @@
                     class="calendar-cell"
                     :class="{
                       'selected': isDateSelected(date),
-                      'available': isDateAvailable(date),
-                      'unavailable': !isDateAvailable(date),
+                      'available': isDateAvailable(date) && !isDatePartiallyAvailable(date),
+                      'partially-available': isDatePartiallyAvailable(date),
+                      'unavailable': !isDateAvailable(date) && !isDatePartiallyAvailable(date),
                       'past': isDateInPast(date),
                       'other-month': !isDateInCurrentMonth(date, nextMonthDate)
                     }"
@@ -267,7 +275,10 @@ export default {
         service_id: this.service.Id,
         dates: dates,
         booking_type: this.selectedBookingType,
-        suite_id: this.selectedSuite ? this.selectedSuite.Id : null
+        // For day bookings, we need ALL suites data to show proper color coding
+        // (green = selected suite available, tan = selected suite unavailable but others available, red = all unavailable)
+        // For night bookings, we can filter by suite
+        suite_id: (this.selectedBookingType === 'night' && this.selectedSuite) ? this.selectedSuite.Id : null
       }
 
       try {
@@ -293,6 +304,20 @@ export default {
         if (data.status === 'success' && data.availability) {
           // Replace current availability with new data
           this.currentAvailability = data.availability
+          
+          // Debug logging for specific dates in December
+          Object.keys(data.availability).forEach(dateStr => {
+            const dateObj = new Date(dateStr)
+            const day = dateObj.getUTCDate()
+            const month = dateObj.getUTCMonth() + 1
+            if ((day === 5 || day === 18) && month === 12) {
+              console.log(`🌐 API Response for ${day}/${month}:`, {
+                dateStr: dateStr,
+                availability: data.availability[dateStr],
+                selectedSuite: this.selectedSuite ? { id: this.selectedSuite.Id, name: this.selectedSuite.Name } : null
+              })
+            }
+          })
         } else {
           console.error('Bulk availability failed:', data.error)
           // Mark dates as unavailable if the API fails
@@ -377,8 +402,63 @@ export default {
         return false
       }
 
+      // Debug logging for specific dates
+      const day = date.getDate()
+      const month = date.getMonth() + 1 // JS months are 0-indexed
+      if ((day === 5 && month === 12) || (day === 18 && month === 12)) {
+        console.log(`📅 isDateAvailable ${day}/${month}:`, {
+          date: date.toISOString(),
+          availability: availability,
+          isAvailable: availability.available
+        })
+      }
+
       // Date is available if at least one suite has at least one time slot free
       return availability.available
+    },
+
+    isDatePartiallyAvailable(date) {
+      // Only applies to day bookings with a specific suite selected
+      if (this.selectedBookingType !== 'day' || !this.selectedSuite) {
+        return false
+      }
+
+      if (this.isDateInPast(date)) return false
+
+      const availability = this.getDateAvailability(date)
+      if (!availability) return false
+
+      // Check if the selected suite is unavailable
+      const selectedSuiteId = this.selectedSuite.Id
+      const suiteAvailability = availability.suite_availability || {}
+      const selectedSuiteSlots = suiteAvailability[selectedSuiteId] || []
+      const selectedSuiteAvailable = selectedSuiteSlots.length > 0
+
+      // Check if other suites are available
+      const otherSuitesAvailable = Object.keys(suiteAvailability).some(suiteId => {
+        return suiteId !== selectedSuiteId && suiteAvailability[suiteId].length > 0
+      })
+
+      // Debug logging for specific dates
+      const day = date.getDate()
+      const month = date.getMonth() + 1 // JS months are 0-indexed
+      if ((day === 5 && month === 12) || (day === 18 && month === 12)) {
+        console.log(`🔍 DEBUG ${day}/${month}:`, {
+          date: date.toISOString(),
+          bookingType: this.selectedBookingType,
+          selectedSuite: this.selectedSuite ? { id: this.selectedSuite.Id, name: this.selectedSuite.Name } : null,
+          availability: availability,
+          suiteAvailability: suiteAvailability,
+          selectedSuiteId: selectedSuiteId,
+          selectedSuiteSlots: selectedSuiteSlots,
+          selectedSuiteAvailable: selectedSuiteAvailable,
+          otherSuitesAvailable: otherSuitesAvailable,
+          resultPartiallyAvailable: !selectedSuiteAvailable && otherSuitesAvailable
+        })
+      }
+
+      // Partial availability: selected suite unavailable BUT other suites available
+      return !selectedSuiteAvailable && otherSuitesAvailable
     },
 
     isDateSelected(date) {
@@ -829,8 +909,13 @@ export default {
   border: none;
 }
 
-.calendar-cell:hover:not(.past):not(.unavailable) {
+.calendar-cell:hover:not(.past):not(.unavailable):not(.partially-available) {
   background: #e9ecef;
+  transform: scale(1.1);
+}
+
+.calendar-cell.partially-available:hover:not(.past) {
+  background: #9a7751; /* Darker tan on hover */
   transform: scale(1.1);
 }
 
@@ -863,6 +948,12 @@ export default {
   background: #219672; /* Green background */
   color: white; /* White text */
   border-color: #219672; /* Green border */
+}
+
+.calendar-cell.partially-available {
+  background: #AD8E62; /* Tan/beige background for suite-specific unavailability */
+  color: white; /* White text */
+  border-color: #AD8E62; /* Tan/beige border */
 }
 
 .calendar-cell.unavailable {
