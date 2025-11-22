@@ -104,8 +104,10 @@
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': isDateAvailable(date),
-                      'unavailable': !isDateAvailable(date),
+                      'available': hasAnyNightSlotAvailability(date),
+                      'unavailable': !hasAnyNightSlotAvailability(date),
+                      'morning-availability': hasMorningSlotAvailability(date),
+                      'night-availability': hasNightSlotAvailability(date),
                       'past': isDateInPast(date),
                       'other-month': !isDateInCurrentMonth(date, currentMonth),
                       'diagonal-overlay': getDiagonalOverlayState(date, getDaysInMonth(currentMonth)).normal,
@@ -136,8 +138,10 @@
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': isDateAvailable(date),
-                      'unavailable': !isDateAvailable(date),
+                      'available': hasAnyNightSlotAvailability(date),
+                      'unavailable': !hasAnyNightSlotAvailability(date),
+                      'morning-availability': hasMorningSlotAvailability(date),
+                      'night-availability': hasNightSlotAvailability(date),
                       'past': isDateInPast(date),
                       'other-month': !isDateInCurrentMonth(date, nextMonthDate),
                       'diagonal-overlay': getDiagonalOverlayState(date, getDaysInMonth(nextMonthDate)).normal,
@@ -326,20 +330,6 @@ export default {
         if (data.status === 'success' && data.availability) {
           // Replace current availability with new data
           this.currentAvailability = data.availability
-          
-          // Debug logging for specific dates in December
-          Object.keys(data.availability).forEach(dateStr => {
-            const dateObj = new Date(dateStr)
-            const day = dateObj.getUTCDate()
-            const month = dateObj.getUTCMonth() + 1
-            if ((day === 5 || day === 18) && month === 12) {
-              console.log(`🌐 API Response for ${day}/${month}:`, {
-                dateStr: dateStr,
-                availability: data.availability[dateStr],
-                selectedSuite: this.selectedSuite ? { id: this.selectedSuite.Id, name: this.selectedSuite.Name } : null
-              })
-            }
-          })
         } else {
           console.error('Bulk availability failed:', data.error)
           // Mark dates as unavailable if the API fails
@@ -347,6 +337,8 @@ export default {
           dates.forEach(dateStr => {
             errorAvailability[dateStr] = {
               available: false,
+              available_morning: false,
+              available_night: false,
               total_suites: 0,
               booked_suites: 0,
               available_suites: 0,
@@ -366,6 +358,8 @@ export default {
         dates.forEach(dateStr => {
           errorAvailability[dateStr] = {
             available: false,
+            available_morning: false,
+            available_night: false,
             total_suites: 0,
             booked_suites: 0,
             available_suites: 0,
@@ -416,6 +410,10 @@ export default {
     isDateAvailable(date) {
       if (this.isDateInPast(date)) return false
 
+      if (this.selectedBookingType === 'night') {
+        return this.getNightAvailabilityFlags(date).any
+      }
+
       // Use getDateAvailability which handles suite filtering
       const availability = this.getDateAvailability(date)
 
@@ -424,19 +422,88 @@ export default {
         return false
       }
 
-      // Debug logging for specific dates
-      const day = date.getDate()
-      const month = date.getMonth() + 1 // JS months are 0-indexed
-      if ((day === 5 && month === 12) || (day === 18 && month === 12)) {
-        console.log(`📅 isDateAvailable ${day}/${month}:`, {
-          date: date.toISOString(),
-          availability: availability,
-          isAvailable: availability.available
-        })
-      }
-
       // Date is available if at least one suite has at least one time slot free
       return availability.available
+    },
+
+    getNightAvailabilityFlags(date) {
+      const availability = this.getDateAvailability(date)
+
+      if (!availability) {
+        return { morning: false, night: false, any: false }
+      }
+
+      const hasMorningField = Object.prototype.hasOwnProperty.call(availability, 'available_morning')
+      const hasNightField = Object.prototype.hasOwnProperty.call(availability, 'available_night')
+      const fallback = !!availability.available
+
+      const morning = hasMorningField ? !!availability.available_morning : fallback
+      const night = hasNightField ? !!availability.available_night : fallback
+
+      return {
+        morning,
+        night,
+        any: morning || night
+      }
+    },
+
+    hasMorningSlotAvailability(date) {
+      if (this.selectedBookingType !== 'night') {
+        return this.isDateAvailable(date)
+      }
+      return this.getNightAvailabilityFlags(date).morning
+    },
+
+    hasNightSlotAvailability(date) {
+      if (this.selectedBookingType !== 'night') {
+        return this.isDateAvailable(date)
+      }
+      return this.getNightAvailabilityFlags(date).night
+    },
+
+    hasAnyNightSlotAvailability(date) {
+      if (this.selectedBookingType !== 'night') {
+        return this.isDateAvailable(date)
+      }
+      return this.getNightAvailabilityFlags(date).any
+    },
+
+    isDateRangeFullyAvailable(startDate, endDate) {
+      // Check all dates from start (inclusive) to end (inclusive) for availability
+      const currentDate = new Date(startDate)
+      const end = new Date(endDate)
+
+      while (currentDate <= end) {
+        const availabilityFlags = this.getNightAvailabilityFlags(currentDate)
+
+        // Start date needs night availability for check-in
+        // End date needs morning availability for check-out
+        // Dates in between need both morning and night availability
+        const isStartDate = currentDate.toDateString() === startDate.toDateString()
+        const isEndDate = currentDate.toDateString() === endDate.toDateString()
+
+        if (isStartDate) {
+          // Start date: needs night availability
+          if (!availabilityFlags.night) {
+            return false
+          }
+        } else if (isEndDate) {
+          // End date: needs morning availability
+          if (!availabilityFlags.morning) {
+            return false
+          }
+        } else {
+          // Dates in between: need both morning and night availability
+          if (!availabilityFlags.morning || !availabilityFlags.night) {
+            return false
+          }
+        }
+
+        // Move to next day
+        currentDate.setDate(currentDate.getDate() + 1)
+      }
+
+      return true
     },
 
     isDatePartiallyAvailable(date) {
@@ -460,24 +527,6 @@ export default {
       const otherSuitesAvailable = Object.keys(suiteAvailability).some(suiteId => {
         return suiteId !== selectedSuiteId && suiteAvailability[suiteId].length > 0
       })
-
-      // Debug logging for specific dates
-      const day = date.getDate()
-      const month = date.getMonth() + 1 // JS months are 0-indexed
-      if ((day === 5 && month === 12) || (day === 18 && month === 12)) {
-        console.log(`🔍 DEBUG ${day}/${month}:`, {
-          date: date.toISOString(),
-          bookingType: this.selectedBookingType,
-          selectedSuite: this.selectedSuite ? { id: this.selectedSuite.Id, name: this.selectedSuite.Name } : null,
-          availability: availability,
-          suiteAvailability: suiteAvailability,
-          selectedSuiteId: selectedSuiteId,
-          selectedSuiteSlots: selectedSuiteSlots,
-          selectedSuiteAvailable: selectedSuiteAvailable,
-          otherSuitesAvailable: otherSuitesAvailable,
-          resultPartiallyAvailable: !selectedSuiteAvailable && otherSuitesAvailable
-        })
-      }
 
       // Partial availability: selected suite unavailable BUT other suites available
       return !selectedSuiteAvailable && otherSuitesAvailable
@@ -515,18 +564,28 @@ export default {
     },
 
     selectNightDate(date) {
-      if (this.isDateInPast(date) || !this.isDateAvailable(date)) return
+      if (this.isDateInPast(date)) return
 
       const selectedDate = new Date(date)
+      let isSelectingStart = this.selectionMode === 'start' || !this.selectedDates.start
 
-      if (this.selectionMode === 'start' || !this.selectedDates.start) {
+      if (!isSelectingStart && this.selectedDates.start && selectedDate <= this.selectedDates.start) {
+        isSelectingStart = true
+      }
+
+      const availabilityFlags = this.getNightAvailabilityFlags(date)
+      const slotAvailable = isSelectingStart ? availabilityFlags.night : availabilityFlags.morning
+
+      if (!slotAvailable) return
+
+      if (isSelectingStart) {
         // Selecting start date
         this.selectedDates.start = new Date(selectedDate)
         this.selectedDates.start.setHours(this.nightCheckInHour, 0, 0, 0)
         this.selectedDates.end = null
         this.selectionMode = 'end'
       } else {
-        // Selecting end date
+        // Selecting end date - check if all dates in range are available
         if (selectedDate <= this.selectedDates.start) {
           // If selected date is before or same as start, reset start date
           this.selectedDates.start = new Date(selectedDate)
@@ -534,6 +593,12 @@ export default {
           this.selectedDates.end = null
           this.selectionMode = 'end'
         } else {
+          // Check if all dates between start and selected date are available
+          if (!this.isDateRangeFullyAvailable(this.selectedDates.start, selectedDate)) {
+            this.resetSelection() // Reset selection when invalid range is selected
+            return
+          }
+
           // Set end date
           this.selectedDates.end = new Date(selectedDate)
           this.selectedDates.end.setHours(this.nightCheckOutHour, 0, 0, 0)
@@ -946,11 +1011,36 @@ export default {
   color: white;
 }
 
+.night-booking .calendar-cell.available {
+  background: #219672;
+  color: white;
+}
+
+.night-booking .calendar-cell.available.morning-availability:not(.night-availability) {
+  background: linear-gradient(to bottom right, #219672 0%, #219672 50%, #B33D43 50%, #B33D43 100%); 
+}
+
+.night-booking .calendar-cell.available.night-availability:not(.morning-availability) {
+  background: linear-gradient(to bottom right, #B33D43 0%, #B33D43 50%, #219672 50%, #219672 100%); 
+}
+
+
+.night-booking .calendar-cell.available.morning-availability,
+.night-booking .calendar-cell.available.night-availability {
+  color: white;
+}
+
 .night-booking .calendar-cell.selected,
 .night-booking .calendar-cell.selected-start,
 .night-booking .calendar-cell.selected-end {
-  background: #ffffff;
-  color: #000000;
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+.night-booking .calendar-cell.selected .date-number,
+.night-booking .calendar-cell.selected-start .date-number,
+.night-booking .calendar-cell.selected-end .date-number {
+  color: #000000 !important;
 }
 
 
@@ -972,6 +1062,7 @@ export default {
   border-color: #219672; /* Green border */
 }
 
+
 .calendar-cell.partially-available {
   background: #AD8E62; /* Tan/beige background for suite-specific unavailability */
   color: white; /* White text */
@@ -988,31 +1079,7 @@ export default {
   opacity: 0.50;
 }
 
-.calendar-cell.diagonal-overlay::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(to top left, transparent 50%, #B33D43 50%);
-  border-radius: 6px;
-  pointer-events: none;
-  z-index: 1;
-}
 
-.calendar-cell.diagonal-overlay-reverse::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(to bottom right, transparent 50%, #B33D43 50%);
-  border-radius: 6px;
-  pointer-events: none;
-  z-index: 1;
-}
 
 /* Loading overlay covers entire two-month calendar */
 .two-month-calendar > .calendar-loading-overlay {

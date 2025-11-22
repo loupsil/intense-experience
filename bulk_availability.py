@@ -24,6 +24,9 @@ DAY_MAX_HOURS = 6
 ARRIVAL_TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
 DEPARTURE_TIMES = ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00']
 
+# Default check-in and check-out hours for nuitée bookings
+NIGHT_CHECK_IN_HOUR = 19  # 19:00 (7:00 PM)
+NIGHT_CHECK_OUT_HOUR = 10  # 10:00 (10:00 AM)
 
 def check_bulk_availability_journee(make_mews_request_func, data):
     """Check availability for day bookings (journée) - shows date as unavailable if no valid time slots remain"""
@@ -315,26 +318,74 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
                     if res_start < date_end and res_end > date_start:
                         reservations_by_date[date_str].append(reservation)
 
-            # Check availability for each date in this chunk
+            def reservation_to_local_range(reservation):
+                """Convert reservation start/end to Brussels timezone."""
+                start_raw = reservation.get('StartUtc')
+                end_raw = reservation.get('EndUtc')
+                if not start_raw or not end_raw:
+                    return None, None
+
+                res_start = datetime.fromisoformat(start_raw.replace('Z', '+00:00'))
+                res_end = datetime.fromisoformat(end_raw.replace('Z', '+00:00'))
+
+                return res_start.astimezone(belgian_tz), res_end.astimezone(belgian_tz)
+
+            def is_slot_available_for_suite(slot_start, slot_end, suite_reservations):
+                """Check if a suite has no reservation conflicts for the provided slot."""
+                slot_end_with_buffer = slot_end + timedelta(hours=CLEANING_BUFFER_HOURS)
+                for reservation in suite_reservations:
+                    res_start = reservation["start"]
+                    res_end = reservation["end"]
+                    if not (slot_end_with_buffer <= res_start or slot_start >= res_end):
+                        return False
+                return True
+
+            # Check availability for each date in this chunk with morning/night granularity
             for date_str in chunk_dates:
                 date_reservations = reservations_by_date[date_str]
-                booked_suites = set()
 
-                # Find which suites are booked on this date
+                # Map reservations per suite with localized times for accurate comparisons
+                suite_reservations_map = {suite_id: [] for suite_id in suite_ids}
                 for reservation in date_reservations:
-                    res_requested_category = reservation.get('RequestedCategoryId')
-                    if res_requested_category in suite_ids:
-                        booked_suites.add(res_requested_category)
+                    res_suite_id = reservation.get('RequestedCategoryId')
+                    if res_suite_id not in suite_reservations_map:
+                        continue
+                    res_start_local, res_end_local = reservation_to_local_range(reservation)
+                    if not res_start_local or not res_end_local:
+                        continue
+                    suite_reservations_map[res_suite_id].append({
+                        "start": res_start_local,
+                        "end": res_end_local
+                    })
 
-                # A date is available if at least one suite is free
-                available_suites = len(suite_ids) - len(booked_suites)
-                is_available = available_suites > 0
+                booked_suites = {suite_id for suite_id, res in suite_reservations_map.items() if res}
 
+                date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
+                morning_start = belgian_tz.localize(datetime.combine(date_obj, datetime.min.time()))
+                morning_end = morning_start + timedelta(hours=NIGHT_CHECK_OUT_HOUR)
+                night_start = morning_start + timedelta(hours=NIGHT_CHECK_IN_HOUR)
+                next_day_start = belgian_tz.localize(datetime.combine(date_obj + timedelta(days=1), datetime.min.time()))
+                night_end = next_day_start + timedelta(hours=NIGHT_CHECK_OUT_HOUR)
+
+                morning_available_suite_ids = set()
+                night_available_suite_ids = set()
+
+                for suite_id, suite_reservations in suite_reservations_map.items():
+                    if is_slot_available_for_suite(morning_start, morning_end, suite_reservations):
+                        morning_available_suite_ids.add(suite_id)
+                    if is_slot_available_for_suite(night_start, night_end, suite_reservations):
+                        night_available_suite_ids.add(suite_id)
+
+                available_morning = len(morning_available_suite_ids) > 0
+                available_night = len(night_available_suite_ids) > 0
+                # For backward compatibility, keep "available" aligned with night availability (check-in)
                 chunk_availability[date_str] = {
-                    "available": is_available,
+                    "available": available_night,
+                    "available_morning": available_morning,
+                    "available_night": available_night,
                     "total_suites": len(suite_ids),
                     "booked_suites": len(booked_suites),
-                    "available_suites": available_suites,
+                    "available_suites": len(night_available_suite_ids),
                     "booked_suite_ids": list(booked_suites)
                 }
 
