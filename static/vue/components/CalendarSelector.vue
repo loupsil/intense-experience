@@ -106,6 +106,9 @@
                       'selected-end': isEndDate(date),
                       'available': hasAnyNightSlotAvailability(date),
                       'unavailable': !hasAnyNightSlotAvailability(date),
+                      'other-suite-available': shouldShowOtherSuiteAnyAvailability(date),
+                      'other-suite-morning': shouldShowOtherSuiteMorningAvailability(date),
+                      'other-suite-night': shouldShowOtherSuiteNightAvailability(date),
                       'morning-availability': hasMorningSlotAvailability(date),
                       'night-availability': hasNightSlotAvailability(date),
                       'past': isDateInPast(date),
@@ -140,6 +143,9 @@
                       'selected-end': isEndDate(date),
                       'available': hasAnyNightSlotAvailability(date),
                       'unavailable': !hasAnyNightSlotAvailability(date),
+                      'other-suite-available': shouldShowOtherSuiteAnyAvailability(date),
+                      'other-suite-morning': shouldShowOtherSuiteMorningAvailability(date),
+                      'other-suite-night': shouldShowOtherSuiteNightAvailability(date),
                       'morning-availability': hasMorningSlotAvailability(date),
                       'night-availability': hasNightSlotAvailability(date),
                       'past': isDateInPast(date),
@@ -209,6 +215,7 @@ export default {
       availableDates: [],
       availabilityLoading: false,
       currentAvailability: {}, // Current availability data (replaced on each fetch)
+      selectedSuiteAvailability: {}, // Availability scoped to selected suite (night bookings)
       currentRequestId: null, // Track current request to prevent stale responses
       minDate: new Date().toISOString().split('T')[0],
       currentMonth: new Date(),
@@ -242,6 +249,7 @@ export default {
         this.resetSelection()
         // Clear current availability when booking type changes
         this.currentAvailability = {}
+        this.selectedSuiteAvailability = {}
         // Calendar is now always displayed for both booking types
       }
     },
@@ -251,6 +259,7 @@ export default {
         // This ensures we fetch fresh availability data for the selected suite
         if (newSuite !== oldSuite) {
           this.currentAvailability = {}
+          this.selectedSuiteAvailability = {}
           // Refetch availability for currently displayed dates
           this.fetchAvailabilityForDisplayedDates()
         }
@@ -297,23 +306,78 @@ export default {
         ? '/intense_experience-api/bulk-availability-nuitee'
         : '/intense_experience-api/bulk-availability-journee'
 
-      const requestData = {
+      const baseRequestData = {
         service_id: this.service.Id,
-        dates: dates,
+        dates,
         booking_type: this.selectedBookingType,
-        // For day bookings, we need ALL suites data to show proper color coding
-        // (green = selected suite available, tan = selected suite unavailable but others available, red = all unavailable)
-        // For night bookings, we can filter by suite
-        suite_id: (this.selectedBookingType === 'night' && this.selectedSuite) ? this.selectedSuite.Id : null
+        suite_id: null
       }
 
+      const aggregatedRequest = this.performBulkAvailabilityRequest(
+        endpoint,
+        baseRequestData,
+        dates,
+        { fallbackOnError: true }
+      )
+
+      const shouldFetchSuiteSpecific = this.selectedBookingType === 'night' && this.selectedSuite
+      let suiteSpecificRequest = null
+
+      if (shouldFetchSuiteSpecific) {
+        const suiteRequestData = {
+          ...baseRequestData,
+          suite_id: this.selectedSuite.Id
+        }
+        // Clear suite-specific data while loading to avoid stale highlights
+        this.selectedSuiteAvailability = {}
+        suiteSpecificRequest = this.performBulkAvailabilityRequest(
+          endpoint,
+          suiteRequestData,
+          dates,
+          { fallbackOnError: false }
+        )
+      } else {
+        this.selectedSuiteAvailability = {}
+      }
+
+      try {
+        const aggregatedAvailability = await aggregatedRequest
+        if (this.currentRequestId !== requestId) {
+          return
+        }
+
+        if (aggregatedAvailability) {
+          this.currentAvailability = aggregatedAvailability
+        }
+
+        if (suiteSpecificRequest) {
+          const suiteAvailability = await suiteSpecificRequest
+          if (this.currentRequestId !== requestId) {
+            return
+          }
+          this.selectedSuiteAvailability = suiteAvailability || {}
+        }
+
+        // Use nextTick to ensure DOM updates happen atomically once both requests resolve
+        await this.$nextTick()
+      } catch (error) {
+        console.error('Failed to process availability:', error)
+      } finally {
+        // Only update loading state if this is still the current request
+        if (this.currentRequestId === requestId) {
+          this.availabilityLoading = false
+        }
+      }
+    },
+
+    async performBulkAvailabilityRequest(endpoint, payload, dates, { fallbackOnError = true } = {}) {
       try {
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'application/json'
           },
-          body: JSON.stringify(requestData)
+          body: JSON.stringify(payload)
         })
 
         if (!response.ok) {
@@ -322,61 +386,33 @@ export default {
 
         const data = await response.json()
 
-        // Check if this response is still for the current request
-        if (this.currentRequestId !== requestId) {
-          return
-        }
-
         if (data.status === 'success' && data.availability) {
-          // Replace current availability with new data
-          this.currentAvailability = data.availability
-        } else {
-          console.error('Bulk availability failed:', data.error)
-          // Mark dates as unavailable if the API fails
-          const errorAvailability = {}
-          dates.forEach(dateStr => {
-            errorAvailability[dateStr] = {
-              available: false,
-              available_morning: false,
-              available_night: false,
-              total_suites: 0,
-              booked_suites: 0,
-              available_suites: 0,
-              booked_suite_ids: [],
-              error: true
-            }
-          })
-          this.currentAvailability = errorAvailability
+          return data.availability
         }
 
-        // Use nextTick to ensure DOM updates happen atomically
-        await this.$nextTick()
+        console.error('Bulk availability failed:', data.error)
       } catch (error) {
         console.error('Failed to fetch availability:', error)
-        // Mark dates as unavailable on error for safety
-        const errorAvailability = {}
-        dates.forEach(dateStr => {
-          errorAvailability[dateStr] = {
-            available: false,
-            available_morning: false,
-            available_night: false,
-            total_suites: 0,
-            booked_suites: 0,
-            available_suites: 0,
-            booked_suite_ids: [],
-            error: true
-          }
-        })
-        this.currentAvailability = errorAvailability
-
-        // Use nextTick to ensure DOM updates happen atomically
-        await this.$nextTick()
-      } finally {
-        // Only update loading state if this is still the current request
-        if (this.currentRequestId === requestId) {
-          this.availabilityLoading = false
-        }
       }
+
+      return fallbackOnError ? this.buildAvailabilityErrorMap(dates) : null
+    },
+
+    buildAvailabilityErrorMap(dates) {
+      const fallback = {}
+      dates.forEach(dateStr => {
+        fallback[dateStr] = {
+          available: false,
+          available_morning: false,
+          available_night: false,
+          total_suites: 0,
+          booked_suites: 0,
+          available_suites: 0,
+          booked_suite_ids: [],
+          error: true
+        }
+      })
+      return fallback
     },
 
     async fetchAvailabilityForDisplayedDates() {
@@ -426,9 +462,25 @@ export default {
       return availability.available
     },
 
-    getNightAvailabilityFlags(date) {
-      const availability = this.getDateAvailability(date)
+    shouldUseSuiteSpecificAvailability() {
+      return this.selectedBookingType === 'night' &&
+        !!this.selectedSuite &&
+        Object.keys(this.selectedSuiteAvailability || {}).length > 0
+    },
 
+    getNightAvailabilityData(date) {
+      const overall = this.getDateAvailability(date)
+      const suiteSpecific = this.shouldUseSuiteSpecificAvailability()
+        ? this.getDateAvailability(date, this.selectedSuiteAvailability)
+        : null
+
+      return {
+        overall,
+        suiteSpecific
+      }
+    },
+
+    getNightFlagsFromAvailability(availability) {
       if (!availability) {
         return { morning: false, night: false, any: false }
       }
@@ -445,6 +497,44 @@ export default {
         night,
         any: morning || night
       }
+    },
+
+    getNightAvailabilityFlags(date) {
+      const { suiteSpecific, overall } = this.getNightAvailabilityData(date)
+      const availability = suiteSpecific || overall
+      return this.getNightFlagsFromAvailability(availability)
+    },
+
+    getOtherSuitesNightFlags(date) {
+      if (!this.shouldUseSuiteSpecificAvailability()) {
+        return { morning: false, night: false, any: false }
+      }
+
+      const { suiteSpecific, overall } = this.getNightAvailabilityData(date)
+      if (!suiteSpecific || !overall) {
+        return { morning: false, night: false, any: false }
+      }
+
+      const overallFlags = this.getNightFlagsFromAvailability(overall)
+      const suiteFlags = this.getNightFlagsFromAvailability(suiteSpecific)
+
+      return {
+        morning: overallFlags.morning && !suiteFlags.morning,
+        night: overallFlags.night && !suiteFlags.night,
+        any: overallFlags.any && !suiteFlags.any
+      }
+    },
+
+    shouldShowOtherSuiteAnyAvailability(date) {
+      return this.getOtherSuitesNightFlags(date).any
+    },
+
+    shouldShowOtherSuiteMorningAvailability(date) {
+      return this.getOtherSuitesNightFlags(date).morning
+    },
+
+    shouldShowOtherSuiteNightAvailability(date) {
+      return this.getOtherSuitesNightFlags(date).night
     },
 
     hasMorningSlotAvailability(date) {
@@ -760,12 +850,16 @@ export default {
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
     },
 
-    getDateAvailability(date) {
+    getDateAvailability(date, source = null) {
       if (!date) return null
       // Normalize to UTC midnight to match availability keys
       const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
       const dateStr = utcDate.toISOString()
-      const availability = this.currentAvailability[dateStr] || null
+      const availabilitySource = source || this.currentAvailability
+      if (!availabilitySource) {
+        return null
+      }
+      const availability = availabilitySource[dateStr] || null
 
       return availability
     },
@@ -1017,11 +1111,27 @@ export default {
 }
 
 .night-booking .calendar-cell.available.morning-availability:not(.night-availability) {
-  background: linear-gradient(to bottom right, #219672 0%, #219672 50%, #B33D43 50%, #B33D43 100%); 
+  background: linear-gradient(to bottom right, #219672 0%, #219672 50%, #B33D43 50%, #B33D43 100%);
 }
 
 .night-booking .calendar-cell.available.night-availability:not(.morning-availability) {
-  background: linear-gradient(to bottom right, #B33D43 0%, #B33D43 50%, #219672 50%, #219672 100%); 
+  background: linear-gradient(to bottom right, #B33D43 0%, #B33D43 50%, #219672 50%, #219672 100%);
+}
+
+.night-booking .calendar-cell.available.morning-availability:not(.night-availability).other-suite-night {
+  background: linear-gradient(to bottom right, #219672 0%, #219672 50%, #AD8E62 50%, #AD8E62 100%);
+}
+
+.night-booking .calendar-cell.available.night-availability:not(.morning-availability).other-suite-morning {
+  background: linear-gradient(to bottom right, #AD8E62 0%, #AD8E62 50%, #219672 50%, #219672 100%);
+}
+
+.night-booking .calendar-cell.unavailable.other-suite-morning:not(.other-suite-night) {
+  background: linear-gradient(to bottom right, #AD8E62 0%, #AD8E62 50%, #B33D43 50%, #B33D43 100%);
+}
+
+.night-booking .calendar-cell.unavailable.other-suite-night:not(.other-suite-morning) {
+  background: linear-gradient(to bottom right, #B33D43 0%, #B33D43 50%, #AD8E62 50%, #AD8E62 100%);
 }
 
 
@@ -1074,9 +1184,20 @@ export default {
   border-color: #f5c6cb; /* Red border */
 }
 
+.night-booking .calendar-cell.unavailable.other-suite-available {
+  background: #AD8E62;
+  border-color: #AD8E62;
+  color: white;
+}
+
 .calendar-cell.unavailable .date-number {
   color: white;
   opacity: 0.50;
+}
+
+.night-booking .calendar-cell.unavailable.other-suite-available .date-number {
+  color: white;
+  opacity: 1;
 }
 
 
