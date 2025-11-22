@@ -99,7 +99,9 @@
                       'available': isDateAvailable(date),
                       'unavailable': !isDateAvailable(date),
                       'past': isDateInPast(date),
-                      'other-month': !isDateInCurrentMonth(date, currentMonth)
+                      'other-month': !isDateInCurrentMonth(date, currentMonth),
+                      'diagonal-overlay': getDiagonalOverlayState(date, getDaysInMonth(currentMonth)).normal,
+                      'diagonal-overlay-reverse': getDiagonalOverlayState(date, getDaysInMonth(currentMonth)).reverse
                     }"
                     @click="!availabilityLoading && selectNightDate(date)"
                   >
@@ -129,7 +131,9 @@
                       'available': isDateAvailable(date),
                       'unavailable': !isDateAvailable(date),
                       'past': isDateInPast(date),
-                      'other-month': !isDateInCurrentMonth(date, nextMonthDate)
+                      'other-month': !isDateInCurrentMonth(date, nextMonthDate),
+                      'diagonal-overlay': getDiagonalOverlayState(date, getDaysInMonth(nextMonthDate)).normal,
+                      'diagonal-overlay-reverse': getDiagonalOverlayState(date, getDaysInMonth(nextMonthDate)).reverse
                     }"
                     @click="!availabilityLoading && selectNightDate(date)"
                   >
@@ -597,6 +601,45 @@ export default {
       const availability = this.currentAvailability[dateStr] || null
 
       return availability
+    },
+
+    getDiagonalOverlayState(date, datesArray) {
+      // Only apply for night bookings
+      if (this.selectedBookingType !== 'night') {
+        return { normal: false, reverse: false }
+      }
+
+      // Only apply if current date is available
+      if (!this.isDateAvailable(date)) {
+        return { normal: false, reverse: false }
+      }
+
+      // Find the index of this date in the dates array
+      const dateIndex = datesArray.findIndex(d => d.toDateString() === date.toDateString())
+      if (dateIndex === -1) {
+        return { normal: false, reverse: false }
+      }
+
+      let normal = false
+      let reverse = false
+
+      // Check for normal overlay (left unavailable, right available)
+      if (dateIndex % 7 !== 0) {
+        const previousDate = datesArray[dateIndex - 1]
+        if (previousDate && !this.isDateAvailable(previousDate)) {
+          normal = true
+        }
+      }
+
+      // Check for reverse overlay (right unavailable, left available)
+      if (dateIndex % 7 !== 6) {
+        const nextDate = datesArray[dateIndex + 1]
+        if (nextDate && !this.isDateAvailable(nextDate)) {
+          reverse = true
+        }
+      }
+
+      return { normal, reverse }
     }
   }
 }
@@ -691,12 +734,12 @@ export default {
 
 .available-color {
   background: #d4edda;
-  border: 2px solid #28a745;
+  border: 2px solid #219672;
 }
 
 .unavailable-color {
   background: #f8d7da;
-  border: 2px solid #dc3545;
+  border: 2px solid #B33D43;
 }
 
 /* Month Header with Navigation */
@@ -770,7 +813,7 @@ export default {
 .calendar-body {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  gap: 1px;
   position: relative;
 }
 
@@ -783,7 +826,7 @@ export default {
   border-radius: 6px;
   transition: all 0.3s ease;
   position: relative;
-  border: 1px solid transparent;
+  border: none;
 }
 
 .calendar-cell:hover:not(.past):not(.unavailable) {
@@ -791,33 +834,19 @@ export default {
   transform: scale(1.1);
 }
 
-.calendar-cell.selected {
-  background: #007bff;
+.day-booking .calendar-cell.selected {
+  background: #000000;
   color: white;
 }
 
-.calendar-cell.selected-start {
-  background: #28a745;
-  color: white;
+.night-booking .calendar-cell.selected,
+.night-booking .calendar-cell.selected-start,
+.night-booking .calendar-cell.selected-end {
+  background: #ffffff;
+  color: #000000;
 }
 
-.calendar-cell.selected-end {
-  background: #dc3545;
-  color: white;
-}
 
-.calendar-cell.selected-start::after,
-.calendar-cell.selected-end::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: white;
-}
 
 .calendar-cell.past,
 .calendar-cell.unavailable {
@@ -831,15 +860,45 @@ export default {
 }
 
 .calendar-cell.available {
-  background: #d4edda; /* Light green background */
-  color: #155724; /* Dark green text */
-  border-color: #c3e6cb; /* Green border */
+  background: #219672; /* Green background */
+  color: white; /* White text */
+  border-color: #219672; /* Green border */
 }
 
 .calendar-cell.unavailable {
-  background: #f8d7da; /* Light red background */
-  color: #721c24; /* Dark red text */
+  background: #B33D43; /* Red background */
   border-color: #f5c6cb; /* Red border */
+}
+
+.calendar-cell.unavailable .date-number {
+  color: white;
+  opacity: 0.50;
+}
+
+.calendar-cell.diagonal-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to top left, transparent 50%, #B33D43 50%);
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.calendar-cell.diagonal-overlay-reverse::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to bottom right, transparent 50%, #B33D43 50%);
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Loading overlay covers entire two-month calendar */
@@ -883,6 +942,9 @@ export default {
 .date-number {
   font-size: 14px;
   font-weight: 500;
+  color: white;
+  position: relative;
+  z-index: 2;
 }
 
 .selection-summary {
@@ -920,7 +982,7 @@ export default {
 }
 
 .confirm-dates-btn {
-  background: #28a745;
+  background: #219672;
   color: white;
   border: none;
   padding: 12px 24px;
@@ -931,7 +993,7 @@ export default {
 }
 
 .confirm-dates-btn:hover:not(:disabled) {
-  background: #218838;
+  background: #1a7559;
 }
 
 .confirm-dates-btn:disabled {
