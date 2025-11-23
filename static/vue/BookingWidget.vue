@@ -123,8 +123,8 @@
         </div>
       </div>
 
-      <!-- Step 4: Suite Selection (only if not preselected) -->
-      <div v-if="currentStep === 4 && !preselectedSuite && !preselectedSuiteId" class="step">
+      <!-- Step 4: Suite Selection -->
+      <div v-if="currentStep === 4" class="step">
         <h2>Choose your suite</h2>
         <SuiteSelector
           ref="suiteSelector"
@@ -134,6 +134,7 @@
           :end-date="selectedDates.end"
           :pricing="suitePricing"
           :preselected-suite="preselectedSuite"
+          :pricing-calculator="calculateSuitePricingFromData"
           @suite-selected="selectSuite"
           @pricing-updated="updateSuitePricing"
           @pricing-calculated="updatePricing"
@@ -387,9 +388,13 @@ export default {
       if (service) {
         this.selectService(service)
         this.currentStep = 2 // Skip service selection
+
+        // Handle preselected suite if service was found
+        if (this.preselectedSuiteId) {
+          await this.loadSuitesForPreselection(service)
+        }
       }
     }
-
   },
   methods: {
     async loadServices() {
@@ -412,6 +417,136 @@ export default {
       } finally {
         this.loadingServices = false
       }
+    },
+
+    async loadSuitesForPreselection(service) {
+      try {
+        const response = await fetch(`/intense_experience-api/suites?service_id=${service.Id}`)
+        const data = await response.json()
+        if (data.status === 'success' && data.suites) {
+          // Find the suite with the matching ID
+          const suite = data.suites.find(s => s.Id === this.preselectedSuiteId)
+          if (suite) {
+            this.selectedSuite = suite
+            console.log('Preselected suite found:', suite.Names['fr-FR'] || suite.Name)
+          } else {
+            console.warn('Preselected suite ID not found:', this.preselectedSuiteId)
+          }
+        } else {
+          console.error('Failed to load suites for preselection:', data.error)
+        }
+      } catch (error) {
+        console.error('Error loading suites for preselection:', error)
+      }
+    },
+
+    async calculatePreselectedSuitePricing(startDate, endDate) {
+      if (!this.selectedSuite || !startDate || !endDate) {
+        return
+      }
+
+      try {
+        const rateId = this.getRateId()
+        if (!rateId) {
+          console.error('BookingWidget: No rate ID available for service type')
+          return
+        }
+
+        const response = await fetch('/intense_experience-api/pricing', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            rate_id: rateId,
+            start_date: startDate,
+            end_date: endDate
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const result = await response.json()
+        if (result.status === 'success') {
+          // Store pricing data by category ID
+          const pricing = {}
+          if (Array.isArray(result.pricing)) {
+            result.pricing.forEach(categoryPrice => {
+              pricing[categoryPrice.CategoryId] = categoryPrice
+            })
+          }
+
+          // Calculate suite pricing using shared logic
+          const pricingResult = this.calculateSuitePricingFromData(pricing, startDate, endDate)
+          this.pricing.total = pricingResult.total
+          this.suitePriceCalculation = pricingResult.calculation
+        } else {
+          console.error('BookingWidget: Failed to load pricing for preselected suite:', result.error)
+        }
+      } catch (error) {
+        console.error('BookingWidget: Error loading pricing for preselected suite:', error)
+      }
+    },
+
+    calculateSuitePricingFromData(pricing, startDate, endDate, suite = null) {
+      const targetSuite = suite || this.selectedSuite
+      if (!targetSuite || !pricing) {
+        return
+      }
+
+      // Get pricing for the selected suite
+      const suitePricing = pricing[targetSuite.Id]
+
+      if (suitePricing && suitePricing.Prices && suitePricing.Prices.length > 0) {
+        const serviceType = this.getServiceType()
+
+        // For journée: sum all hourly prices, for nuitée: take the first (daily) price
+        if (serviceType === 'journée') {
+          const total = suitePricing.Prices.reduce((sum, price) => sum + price, 0)
+          const hours = suitePricing.Prices.length
+          const hourlyRate = suitePricing.Prices[0]
+
+          // For time-based bookings, the number of hours should be hours - 1
+          // because the API includes both start and end boundaries
+          const actualHours = hours - 1
+          const correctedTotal = actualHours * hourlyRate
+
+          return {
+            total: correctedTotal,
+            calculation: `${hourlyRate}€ × ${actualHours}h`
+          }
+        } else {
+          // For nuitée, take the first price (daily rate) and multiply by number of nights
+          const numberOfNights = this.calculateNumberOfNights(startDate, endDate)
+          return {
+            total: suitePricing.Prices[0] * numberOfNights,
+            calculation: `${suitePricing.Prices[0]}€ × ${numberOfNights} nuits`
+          }
+        }
+      } else {
+        // No pricing data available
+        return {
+          total: 'N/A',
+          calculation: ''
+        }
+      }
+    },
+
+    calculateNumberOfNights(startDate, endDate) {
+      if (!startDate || !endDate) {
+        return 1
+      }
+
+      const start = new Date(startDate)
+      const end = new Date(endDate)
+      const diffTime = Math.abs(end - start)
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+      // For night stays, number of nights is typically diffDays - 1
+      // But according to user, PerPersonPerTimeUnit should be for nights, so return diffDays
+      return diffDays
     },
 
 
@@ -496,6 +631,10 @@ export default {
         end: dates.end
       }
 
+      // Calculate pricing for preselected suite when dates are selected
+      if (this.selectedSuite && dates.start && dates.end) {
+        await this.calculatePreselectedSuitePricing(dates.start, dates.end)
+      }
     },
 
     submitCustomerForm() {

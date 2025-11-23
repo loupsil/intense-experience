@@ -108,6 +108,10 @@ export default {
       type: Object,
       default: null
     },
+    pricingCalculator: {
+      type: Function,
+      default: null
+    },
     service: {
       type: Object,
       default: null
@@ -155,8 +159,7 @@ export default {
     preselectedSuite: {
       handler(newSuite) {
         this.selectedSuite = newSuite
-      },
-      immediate: true
+      }
     },
     service: {
       handler(newService) {
@@ -404,38 +407,21 @@ export default {
     },
 
     calculateSuitePricing() {
-      if (!this.selectedSuite || !this.suitePricing) {
+      if (!this.selectedSuite || !this.suitePricing || !this.pricingCalculator) {
         return
       }
 
-      // Get pricing for the selected suite
-      const suitePricing = this.suitePricing[this.selectedSuite.Id]
+      // Use the pricing calculator function passed from parent
+      const pricingResult = this.pricingCalculator(
+        this.suitePricing,
+        this.startDate,
+        this.endDate,
+        this.selectedSuite
+      )
 
-      if (suitePricing && suitePricing.Prices && suitePricing.Prices.length > 0) {
-        // For journée: sum all hourly prices, for nuitée: take the first (daily) price
-        if (this.serviceType === 'journée') {
-          const total = suitePricing.Prices.reduce((sum, price) => sum + price, 0)
-          const hours = suitePricing.Prices.length
-          const hourlyRate = suitePricing.Prices[0]
+      this.calculatedPricing.total = pricingResult.total
+      this.suitePriceCalculation = pricingResult.calculation
 
-          // For time-based bookings, the number of hours should be hours - 1
-          // because the API includes both start and end boundaries
-          const actualHours = hours - 1
-          const correctedTotal = actualHours * hourlyRate
-
-          this.calculatedPricing.total = correctedTotal
-          this.suitePriceCalculation = `${hourlyRate}€ × ${actualHours}h`
-        } else {
-          // For nuitée, take the first price (daily rate) and multiply by number of nights
-          const numberOfNights = this.calculateNumberOfNights()
-          this.calculatedPricing.total = suitePricing.Prices[0] * numberOfNights
-          this.suitePriceCalculation = `${suitePricing.Prices[0]}€ × ${numberOfNights} nuits`
-        }
-      } else {
-        // No pricing data available
-        this.calculatedPricing.total = 'N/A'
-        // Don't clear suitePriceCalculation here - keep the last known good calculation
-      }
       this.$emit('pricing-calculated', {
         total: this.calculatedPricing.total,
         options: this.calculatedPricing.options,
