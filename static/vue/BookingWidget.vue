@@ -167,7 +167,7 @@
           </div>
           <div class="summary-item">
             <span>{{ selectedSuite?.Names['fr-FR'] }}</span>
-            <span>{{ pricing.total }}{{ typeof pricing.total === 'number' ? '€' : '' }}</span>
+            <span>{{ getSuitePriceInfo().price }}€ <span class="calculation" v-if="getSuitePriceInfo().calculation">({{ getSuitePriceInfo().calculation }})</span></span>
           </div>
           <!-- Individual option lines -->
           <div
@@ -714,8 +714,8 @@ export default {
 
           this.pricing.total = correctedTotal
         } else {
-          // For nuitée, take the first price (daily rate)
-          this.pricing.total = suitePricing.Prices[0]
+          // For nuitée, take the first price (daily rate) and multiply by number of nights
+          this.pricing.total = suitePricing.Prices[0] * this.numberOfNights
         }
       } else {
         // No pricing data available
@@ -802,6 +802,38 @@ export default {
     prevStep() {
       if (this.currentStep > 1) {
         this.currentStep--
+      }
+    },
+
+    getSuitePriceInfo() {
+      if (!this.selectedSuite || !this.suitePricing) {
+        return { price: this.pricing.total, calculation: '' }
+      }
+
+      const suitePricing = this.suitePricing[this.selectedSuite.Id]
+
+      if (!suitePricing || !suitePricing.Prices || suitePricing.Prices.length === 0) {
+        return { price: this.pricing.total, calculation: '' }
+      }
+
+      let calculation = ''
+      let finalPrice = this.pricing.total
+
+      if (this.getServiceType() === 'journée') {
+        // For day stays, show the hourly calculation
+        const hours = suitePricing.Prices.length
+        const actualHours = hours - 1
+        const hourlyRate = suitePricing.Prices[0]
+        calculation = `${hourlyRate}€ × ${actualHours}h`
+      } else {
+        // For night stays, show daily rate × nights
+        const dailyRate = suitePricing.Prices[0]
+        calculation = `${dailyRate}€ × ${this.numberOfNights} nuits`
+      }
+
+      return {
+        price: finalPrice,
+        calculation
       }
     },
 
