@@ -334,14 +334,14 @@ body {
 }
 
 /* Loading States */
-.loading {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 3px solid rgba(255,255,255,.3);
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #c9a961;
     border-radius: 50%;
-    border-top-color: #fff;
-    animation: spin 1s ease-in-out infinite;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
 }
 
 @keyframes spin {
@@ -361,12 +361,12 @@ body {
 }
 
 .btn-primary {
-    background: #007bff;
+    background: #c9a961;
     color: white;
 }
 
 .btn-primary:hover {
-    background: #0056b3;
+    background: #a38a4e;
 }
 
 .btn-secondary {
@@ -376,15 +376,6 @@ body {
 
 .btn-secondary:hover {
     background: #5a6268;
-}
-
-.btn-success {
-    background: #28a745;
-    color: white;
-}
-
-.btn-success:hover {
-    background: #218838;
 }
 
 /* Form Styles */

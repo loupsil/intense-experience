@@ -1,14 +1,9 @@
 <template>
   <div class="options-selector">
-    <h3>Options et services supplémentaires</h3>
-    <p class="options-intro">
-      Personnalisez votre expérience avec nos options premium
-    </p>
-
     <!-- Loading state -->
     <div v-if="isLoadingProducts" class="options-loading">
       <div class="spinner"></div>
-      <p>Chargement des options disponibles...</p>
+      <p>Loading available options...</p>
     </div>
 
     <!-- Options loaded -->
@@ -20,13 +15,15 @@
         :class="{ selected: isSelected(product) }"
         @click="toggleOption(product)"
       >
+        <!-- Product Image -->
+        <div class="option-image">
+          <img :src="getProductImage(product) || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjhmOWZhIi8+PC9zdmc+'" :alt="product.Names?.['fr-FR'] || product.Name" />
+        </div>
+
         <div class="option-header">
           <h4>{{ product.Names?.['fr-FR'] || product.Name }}</h4>
           <div class="option-price">
             <span class="price">{{ getProductPriceInfo(product).price }}€</span>
-            <span class="calculation" v-if="getProductPriceInfo(product).calculation !== getProductPriceInfo(product).price + '€'">
-              ({{ getProductPriceInfo(product).calculation }})
-            </span>
             <span v-if="product.Pricing?.Type === 'PerPerson'" class="per-person">/pers.</span>
           </div>
         </div>
@@ -35,12 +32,13 @@
           <p>{{ getProductDescription(product) }}</p>
         </div>
 
-        <div class="option-meta">
+
+        <div class="category-badge-container">
           <span class="category-badge">{{ getCategoryName(product) }}</span>
-          <span v-if="getChargingInfo(product)" class="charging-badge">{{ getChargingInfo(product) }}</span>
-          <div class="selection-indicator">
-            <i :class="isSelected(product) ? 'fas fa-check-circle' : 'far fa-circle'"></i>
-          </div>
+        </div>
+
+        <div class="selection-indicator">
+          <i :class="isSelected(product) ? 'fas fa-check-circle' : 'far fa-circle'"></i>
         </div>
       </div>
     </div>
@@ -67,12 +65,21 @@ export default {
     numberOfNights: {
       type: Number,
       default: 1
+    },
+    debugMode: {
+      type: Boolean,
+      default: false
+    },
+    bookingType: {
+      type: String,
+      default: 'day'
     }
   },
   data() {
     return {
       localSelectedOptions: [...this.selectedOptions],
-      isLoadingProducts: false
+      isLoadingProducts: false,
+      productImages: {} // Store image URLs by product ID
     }
   },
   mounted() {
@@ -80,6 +87,9 @@ export default {
     if (this.serviceId && this.products.length === 0) {
       this.loadProducts()
     }
+    this.$nextTick(() => {
+      this.updateBackgroundColor()
+    })
   },
   watch: {
     selectedOptions: {
@@ -95,6 +105,14 @@ export default {
           this.loadProducts()
         }
       }
+    },
+    bookingType: {
+      handler() {
+        this.$nextTick(() => {
+          this.updateBackgroundColor()
+        })
+      },
+      immediate: true
     }
   },
   methods: {
@@ -209,7 +227,7 @@ export default {
 
     getProductDescription(product) {
       // Return description from product data if available
-      return product.Descriptions?.['fr-FR'] || ''
+      return product.Description || product.Descriptions?.['fr-FR'] || ''
     },
 
     getCategoryName(product) {
@@ -254,6 +272,9 @@ export default {
             product.ServiceId === this.serviceId
           )
 
+          // Load images for products that have ImageIds
+          await this.loadProductImages(filteredProducts)
+
           // Emit the loaded products
           this.$emit('products-loaded', filteredProducts)
         } else {
@@ -263,6 +284,69 @@ export default {
         console.error('Error loading products:', error)
       } finally {
         this.isLoadingProducts = false
+      }
+    },
+
+    async loadProductImages(products) {
+      // Collect all image IDs from products
+      const imageIds = []
+      products.forEach(product => {
+        if (product.ImageIds && product.ImageIds.length > 0) {
+          // Take the first image ID for each product
+          imageIds.push(product.ImageIds[0])
+        }
+      })
+
+      if (imageIds.length === 0) {
+        return // No images to load
+      }
+
+      try {
+        const response = await fetch('/intense_experience-api/images/get-urls', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ image_ids: imageIds })
+        })
+
+        const data = await response.json()
+        if (data.status === 'success' && data.image_urls) {
+          // Map image URLs back to products
+          data.image_urls.forEach(imageUrl => {
+            // Find the product that has this image ID
+            const product = products.find(p =>
+              p.ImageIds && p.ImageIds.includes(imageUrl.ImageId)
+            )
+            if (product) {
+              this.productImages[product.Id] = imageUrl.Url
+            }
+          })
+        } else {
+          console.error('Failed to load product images:', data.error)
+        }
+      } catch (error) {
+        console.error('Error loading product images:', error)
+      }
+    },
+
+    getProductImage(product) {
+      return this.productImages[product.Id] || null
+    },
+
+    updateBackgroundColor() {
+      if (this.bookingType === 'night') {
+        this.$el.style.setProperty('--option-card-background', '#161616')
+        this.$el.style.setProperty('--option-card-text', '#ffffff')
+        this.$el.style.setProperty('--option-badge-background', '#333')
+        this.$el.style.setProperty('--option-selected-background', '#161616')
+        this.$el.style.setProperty('--option-selected-box-shadow', '0px 0px 5px 5px rgb(255 255 255 / 30%)')
+      } else if (this.bookingType === 'day') {
+        this.$el.style.setProperty('--option-card-background', '#E9E9DF')
+        this.$el.style.setProperty('--option-card-text', '#333')
+        this.$el.style.setProperty('--option-badge-background', '#f8f9fa')
+        this.$el.style.setProperty('--option-selected-background', '#f8f9ff')
+        this.$el.style.setProperty('--option-selected-box-shadow', 'none')
       }
     }
   }
@@ -290,18 +374,22 @@ export default {
 
 .options-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 20px;
   margin-bottom: 30px;
 }
 
 .option-card {
-  border: 2px solid #e0e0e0;
   border-radius: 12px;
   padding: 20px;
   cursor: pointer;
   transition: all 0.3s ease;
-  background: #fff;
+  background: var(--option-card-background, #fff);
+  color: var(--option-card-text, #333);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border:none;
+  position: relative;
+  padding-bottom: 50px;
 }
 
 .option-card:hover {
@@ -311,7 +399,27 @@ export default {
 
 .option-card.selected {
   border-color: #007bff;
-  background: #f8f9ff;
+  background: var(--option-selected-background, #f8f9ff);
+  box-shadow: var(--option-selected-box-shadow, none);
+}
+
+.option-image {
+  margin-bottom: 15px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f8f9fa;
+}
+
+.option-image img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.option-card:hover .option-image img {
+  transform: scale(1.02);
 }
 
 .option-header {
@@ -323,7 +431,7 @@ export default {
 
 .option-header h4 {
   margin: 0;
-  color: #333;
+  color: var(--option-card-text, #333);
   flex: 1;
 }
 
@@ -334,18 +442,18 @@ export default {
 .price {
   font-size: 20px;
   font-weight: bold;
-  color: #007bff;
+  color: var(--option-card-text, #333);
   display: block;
 }
 
 .per-person {
   font-size: 12px;
-  color: #666;
+  color: var(--option-card-text, #333);
 }
 
 .calculation {
   font-size: 11px;
-  color: #666;
+  color: var(--option-card-text, #333);
   font-weight: normal;
   margin-left: 4px;
 }
@@ -356,42 +464,37 @@ export default {
 
 .option-description p {
   margin: 0;
-  color: #666;
+  color: var(--option-card-text, #333);
   line-height: 1.5;
 }
 
-.option-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+
+.category-badge-container {
+  position: absolute;
+  bottom: 15px;
+  left: 15px;
 }
 
 .category-badge {
-  background: #f8f9fa;
-  color: #666;
+  background: var(--option-badge-background, #f8f9fa);
+  color: var(--option-card-text, #333);
   padding: 4px 12px;
   border-radius: 20px;
   font-size: 12px;
   font-weight: 500;
 }
 
-.charging-badge {
-  background: #e3f2fd;
-  color: #1976d2;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  margin-left: 8px;
-}
 
 .selection-indicator {
-  color: #007bff;
+  color: var(--option-card-text, #333);
   font-size: 18px;
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
 }
 
 .option-card.selected .selection-indicator {
-  color: #28a745;
+  color: #b89851;
 }
 
 .options-loading {
@@ -402,7 +505,7 @@ export default {
 
 .options-loading .spinner {
   border: 4px solid #f3f3f3;
-  border-top: 4px solid #007bff;
+  border-top: 4px solid #c9a961;
   border-radius: 50%;
   width: 40px;
   height: 40px;
@@ -416,6 +519,12 @@ export default {
 }
 
 /* Responsive */
+@media (max-width: 1024px) {
+  .options-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
   .options-grid {
     grid-template-columns: 1fr;

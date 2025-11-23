@@ -9,7 +9,7 @@
             <div class="two-month-calendar">
               <!-- Single loading overlay for entire calendar -->
               <div v-if="availabilityLoading" class="calendar-loading-overlay">
-                <div class="calendar-spinner"></div>
+                <div class="spinner"></div>
               </div>
 
               <!-- Current Month -->
@@ -83,7 +83,7 @@
             <div class="two-month-calendar">
               <!-- Single loading overlay for entire calendar -->
               <div v-if="availabilityLoading" class="calendar-loading-overlay">
-                <div class="calendar-spinner"></div>
+                <div class="spinner"></div>
               </div>
 
               <!-- Current Month -->
@@ -1226,19 +1226,6 @@ export default {
   border-color: transparent !important;
 }
 
-.calendar-spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #007bff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
 
 .date-number {
   font-size: 14px;

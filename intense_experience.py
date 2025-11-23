@@ -304,6 +304,35 @@ def get_products():
         return jsonify({"products": result["Products"], "status": "success"})
     return jsonify({"error": "Failed to fetch products", "status": "error"}), 500
 
+@intense_experience_bp.route('/intense_experience-api/images/get-urls', methods=['POST'])
+def get_image_urls():
+    """Get image URLs for given image IDs"""
+    data = request.json
+    image_ids = data.get('image_ids', [])
+
+    if not image_ids:
+        return jsonify({"error": "No image IDs provided", "status": "error"}), 400
+
+    # Prepare images array for Mews API
+    images = []
+    for image_id in image_ids:
+        images.append({
+            "ImageId": image_id,
+            "Width": 400,  # Reasonable size for product cards
+            "Height": 300,
+            "ResizeMode": "Fit"
+        })
+
+    payload = {
+        "Client": "Intense Experience Booking",
+        "Images": images
+    }
+
+    result = make_mews_request("images/getUrls", payload)
+    if result and "ImageUrls" in result:
+        return jsonify({"image_urls": result["ImageUrls"], "status": "success"})
+    return jsonify({"error": "Failed to fetch image URLs", "status": "error"}), 500
+
 @intense_experience_bp.route('/intense_experience-api/age-categories', methods=['GET'])
 def get_age_categories():
     """Get available age categories for services"""

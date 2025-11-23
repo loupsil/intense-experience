@@ -186,6 +186,7 @@ export default {
       }
       
       if (this.bookingType === 'night') {
+        // Sets the CSS custom property (CSS variable) '--timeselector-background' to a dark color (#161616)
         this.$el.style.setProperty('--timeselector-background', '#161616')
       } else if (this.bookingType === 'day') {
         this.$el.style.setProperty('--timeselector-background', '#E9E9DF')

@@ -1,5 +1,5 @@
 <template>
-  <div class="booking-widget">
+  <div class="booking-widget" :class="{ 'has-sidebar': showSidebar }">
     <div class="booking-container">
       <!-- Quick Booking Header -->
       <div v-if="currentStep === 2" class="quick-booking-header">
@@ -156,15 +156,14 @@
           :selected-options="selectedOptions"
           :service-id="selectedService?.Id"
           :number-of-nights="numberOfNights"
+          :debug-mode="debugMode"
+          :booking-type="bookingType"
           @options-updated="updateOptions"
           @products-loaded="handleProductsLoaded"
         />
-        <div class="booking-summary">
+        <!-- Booking Summary - Mobile (inline) -->
+        <div v-if="!showSidebar" class="booking-summary">
           <h3>Summary</h3>
-          <div class="summary-item">
-            <span>{{ selectedService?.Names['fr-FR'] }}</span>
-            <span>{{ formatDateRange(selectedDates.start, selectedDates.end) }}</span>
-          </div>
           <div class="summary-item">
             <span>{{ selectedSuite?.Names['fr-FR'] }}</span>
             <span>{{ getSuitePriceInfo().price }}€ <span class="calculation" v-if="getSuitePriceInfo().calculation">({{ getSuitePriceInfo().calculation }})</span></span>
@@ -182,7 +181,8 @@
             <strong>Total: {{ typeof pricing.total === 'number' ? (pricing.total + pricing.options) + '€' : pricing.total }}</strong>
           </div>
         </div>
-        <div class="step-navigation">
+        <!-- Step navigation - shown when sidebar is not visible (mobile) -->
+        <div v-if="!showSidebar" class="step-navigation">
           <button class="prev-btn" @click="prevStep">Back</button>
           <button class="next-btn" @click="nextStep">Continue</button>
         </div>
@@ -253,6 +253,33 @@
       </div>
     </div>
 
+    <!-- Booking Summary - Desktop Right Side -->
+    <div v-if="showSidebar" class="booking-summary-sidebar">
+      <div class="booking-summary">
+        <h3>Summary</h3>
+        <div class="summary-item">
+          <span>{{ selectedSuite?.Names['fr-FR'] }}</span>
+          <span>{{ getSuitePriceInfo().price }}€ <span class="calculation" v-if="getSuitePriceInfo().calculation">({{ getSuitePriceInfo().calculation }})</span></span>
+        </div>
+        <!-- Individual option lines -->
+        <div
+          v-for="option in selectedOptions"
+          :key="option.Id"
+          class="summary-item"
+        >
+          <span>{{ option.Names?.['fr-FR'] || option.Name }}</span>
+          <span>{{ option.calculatedPrice }}€ <span class="calculation" v-if="option.priceCalculation !== option.calculatedPrice + '€'">({{ option.priceCalculation }})</span></span>
+        </div>
+        <div class="summary-total">
+          <strong>Total: {{ typeof pricing.total === 'number' ? (pricing.total + pricing.options) + '€' : pricing.total }}</strong>
+        </div>
+      </div>
+      <div class="sidebar-navigation">
+        <button class="prev-btn" @click="prevStep">Back</button>
+        <button class="next-btn" @click="nextStep">Continue</button>
+      </div>
+    </div>
+
     <!-- Debug button -->
     <button class="debug-btn" @click="toggleDebug" title="Toggle debug mode">
       DEV
@@ -317,6 +344,10 @@ export default {
       return this.customerInfo.firstName &&
              this.customerInfo.lastName &&
              this.customerInfo.email
+    },
+
+    showSidebar() {
+      return this.currentStep === 5
     },
 
     numberOfNights() {
@@ -923,6 +954,7 @@ export default {
   transition: background-color 0.5s ease;
 }
 
+
 .booking-container {
   padding: 30px;
 }
@@ -1061,15 +1093,6 @@ h2 {
   color: #666;
 }
 
-.service-loading .spinner {
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #007bff;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 20px;
-}
 
 .service-error {
   color: #dc3545;
@@ -1133,6 +1156,13 @@ h2 {
   margin-top: 30px;
 }
 
+.sidebar-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+}
+
 .booking-summary {
   background: var(--booking-section-background, #f8f9fa);
   padding: 20px;
@@ -1153,7 +1183,7 @@ h2 {
   font-size: 18px;
   margin-top: 15px;
   padding-top: 15px;
-  border-top: 2px solid #007bff;
+  border-top: 2px solid #ccc;
   text-align: right;
 }
 
@@ -1177,20 +1207,6 @@ h2 {
   z-index: 1000;
 }
 
-.spinner {
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #007bff;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-  margin-bottom: 20px;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
 
 .loading-overlay p {
   color: #666;
@@ -1307,8 +1323,32 @@ h2 {
   background: #5a6268;
 }
 
+/* Desktop layout with sidebar */
+@media (min-width: 1024px) {
+  .booking-widget.has-sidebar {
+    display: flex;
+    gap: 30px;
+    align-items: flex-start;
+  }
+
+  .booking-container {
+    flex: 1;
+    order: 1;
+  }
+
+  .booking-summary-sidebar {
+    flex: 0 0 300px;
+    position: sticky;
+    top: 20px;
+    margin: 20px;
+    order: 2;
+  }
+}
+
+
 /* Responsive */
 @media (max-width: 768px) {
+
   .booking-container {
     padding: 20px;
   }
@@ -1343,6 +1383,14 @@ h2 {
   }
 
   .step-navigation button {
+    margin: 5px 0;
+  }
+
+  .sidebar-navigation {
+    flex-direction: column;
+  }
+
+  .sidebar-navigation button {
     margin: 5px 0;
   }
 
