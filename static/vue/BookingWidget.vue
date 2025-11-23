@@ -93,6 +93,7 @@
           :service="selectedService"
           :booking-type="bookingType"
           :selected-suite="selectedSuite"
+          :suite-pricing="suitePricing"
           @date-selected="handleDateSelection"
           @dates-confirmed="nextStep"
         />
@@ -377,6 +378,15 @@ export default {
           // The OptionsSelector will handle loading products itself
         }
       }
+    },
+    selectedSuite: {
+      handler(newSuite, oldSuite) {
+        // Reset pricing when suite changes to avoid showing pricing for wrong suite
+        if (newSuite !== oldSuite) {
+          console.log('BookingWidget: Suite changed, resetting suitePricing')
+          this.suitePricing = {}
+        }
+      }
     }
   },
   async mounted() {
@@ -441,12 +451,23 @@ export default {
     },
 
     async calculatePreselectedSuitePricing(startDate, endDate) {
+      console.log('BookingWidget calculatePreselectedSuitePricing called:', {
+        selectedSuite: this.selectedSuite,
+        selectedSuiteId: this.selectedSuite?.Id,
+        startDate,
+        endDate,
+        currentSuitePricing: this.suitePricing
+      })
+
       if (!this.selectedSuite || !startDate || !endDate) {
+        console.log('BookingWidget: Missing required data for pricing calculation')
         return
       }
 
       try {
         const rateId = this.getRateId()
+        console.log('BookingWidget: rateId for pricing request:', rateId)
+
         if (!rateId) {
           console.error('BookingWidget: No rate ID available for service type')
           return
@@ -464,22 +485,41 @@ export default {
           })
         })
 
+        console.log('BookingWidget: Pricing API response status:', response.status)
+
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
         }
 
         const result = await response.json()
+        console.log('BookingWidget: Pricing API result:', result)
+
         if (result.status === 'success') {
           // Store pricing data by category ID
           const pricing = {}
           if (Array.isArray(result.pricing)) {
-            result.pricing.forEach(categoryPrice => {
+            console.log('BookingWidget: Processing', result.pricing.length, 'pricing items')
+            result.pricing.forEach((categoryPrice, index) => {
+              console.log(`BookingWidget: Processing pricing item ${index}:`, {
+                CategoryId: categoryPrice.CategoryId,
+                Prices: categoryPrice.Prices
+              })
               pricing[categoryPrice.CategoryId] = categoryPrice
             })
+          } else {
+            console.log('BookingWidget: result.pricing is not an array:', result.pricing)
           }
+
+          console.log('BookingWidget: Final pricing object keys:', Object.keys(pricing))
+          console.log('BookingWidget: Final pricing object:', pricing)
+
+          // Store pricing data for TimeSelector component
+          this.suitePricing = pricing
+          console.log('BookingWidget: Set suitePricing to:', this.suitePricing)
 
           // Calculate suite pricing using shared logic
           const pricingResult = this.calculateSuitePricingFromData(pricing, startDate, endDate)
+          console.log('BookingWidget: Local pricing calculation result:', pricingResult)
           this.pricing.total = pricingResult.total
           this.suitePriceCalculation = pricingResult.calculation
         } else {
@@ -626,14 +666,31 @@ export default {
     },
 
     async handleDateSelection(dates) {
+      console.log('BookingWidget handleDateSelection called with:', dates)
+      console.log('BookingWidget current state:', {
+        selectedSuite: this.selectedSuite,
+        currentSelectedDates: this.selectedDates
+      })
+
       this.selectedDates = {
         start: dates.start,
         end: dates.end
       }
 
+      console.log('BookingWidget updated selectedDates to:', this.selectedDates)
+
+      // Reset suitePricing when dates change to avoid showing stale pricing
+      if (this.selectedSuite) {
+        console.log('BookingWidget: Resetting suitePricing for new date selection')
+        this.suitePricing = {}
+      }
+
       // Calculate pricing for preselected suite when dates are selected
       if (this.selectedSuite && dates.start && dates.end) {
+        console.log('BookingWidget: Calling calculatePreselectedSuitePricing')
         await this.calculatePreselectedSuitePricing(dates.start, dates.end)
+      } else {
+        console.log('BookingWidget: Not calling calculatePreselectedSuitePricing - missing data')
       }
     },
 

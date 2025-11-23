@@ -42,6 +42,21 @@
           {{ validationMessage }}
         </div>
 
+        <!-- Pricing display for preselected suite -->
+        <div v-if="selectedSuite && canBook" class="pricing-display">
+          <div v-if="pricingLoading" class="pricing-loading">
+            <div class="pricing-spinner"></div>
+            <span>Calculating...</span>
+          </div>
+          <div v-else-if="pricingInfo && pricingInfo.total !== 'N/A'" class="pricing-content">
+            <div class="pricing-amount">{{ pricingInfo.total }}€</div>
+            <div v-if="pricingInfo.calculation" class="pricing-calculation">{{ pricingInfo.calculation }}</div>
+          </div>
+          <div v-else class="pricing-unavailable">
+            Pricing unavailable
+          </div>
+        </div>
+
         <button class="book-btn" :disabled="!canBook" @click="bookSuite">BOOK A SUITE</button>
         <div class="no-charge-text">You won't be charged yet</div>
       </div>
@@ -58,6 +73,21 @@
           <div class="detail-row">
             <div class="detail-label">CHECK OUT</div>
             <div class="detail-value">{{ formatDateShort(selectedDates.end) || 'Select date' }}</div>
+          </div>
+        </div>
+
+        <!-- Pricing display for preselected suite -->
+        <div v-if="selectedSuite && canBook" class="pricing-display">
+          <div v-if="pricingLoading" class="pricing-loading">
+            <div class="pricing-spinner"></div>
+            <span>Calculating...</span>
+          </div>
+          <div v-else-if="pricingInfo && pricingInfo.total !== 'N/A'" class="pricing-content">
+            <div class="pricing-amount">{{ pricingInfo.total }}€</div>
+            <div v-if="pricingInfo.calculation" class="pricing-calculation">{{ pricingInfo.calculation }}</div>
+          </div>
+          <div v-else class="pricing-unavailable">
+            Pricing unavailable
           </div>
         </div>
 
@@ -96,6 +126,10 @@ export default {
     selectedSuite: {
       type: Object,
       default: null
+    },
+    suitePricing: {
+      type: Object,
+      default: () => ({})
     }
   },
   data() {
@@ -108,7 +142,8 @@ export default {
         day_min_hours: null,
         day_max_hours: null
       },
-      limitsLoaded: false
+      limitsLoaded: false,
+      pricingLoading: false
     }
   },
   computed: {
@@ -132,9 +167,47 @@ export default {
         }
       }
       return null
+    },
+    pricingInfo() {
+      console.log('TimeSelector pricingInfo computed:', {
+        selectedSuite: this.selectedSuite,
+        suitePricing: this.suitePricing,
+        bookingType: this.bookingType,
+        selectedDate: this.selectedDate,
+        selectedDates: this.selectedDates
+      })
+
+      if (!this.selectedSuite || !this.suitePricing) {
+        console.log('TimeSelector: Missing selectedSuite or suitePricing, returning null')
+        return null
+      }
+
+      const startDate = this.bookingType === 'day' ? this.selectedDate : this.selectedDates.start
+      const endDate = this.bookingType === 'day' ? this.selectedDate : this.selectedDates.end
+
+      console.log('TimeSelector: startDate and endDate:', { startDate, endDate })
+
+      if (!startDate || !endDate) {
+        console.log('TimeSelector: Missing startDate or endDate, returning null')
+        return null
+      }
+
+      const result = this.calculateSuitePricingFromData(this.suitePricing, startDate, endDate)
+      console.log('TimeSelector: calculateSuitePricingFromData result:', result)
+
+      // Update loading state based on result
+      this.pricingLoading = result.total === 'N/A'
+
+      return result
     }
   },
   mounted() {
+    console.log('TimeSelector mounted with props:', {
+      selectedSuite: this.selectedSuite,
+      suitePricing: this.suitePricing,
+      bookingType: this.bookingType,
+      service: this.service
+    })
     this.fetchBookingLimits()
     this.$nextTick(() => {
       this.updateBackgroundColors()
@@ -175,6 +248,34 @@ export default {
         }
       },
       deep: true,
+      immediate: true
+    },
+    suitePricing: {
+      handler(newVal, oldVal) {
+        console.log('TimeSelector suitePricing changed:', { newVal, oldVal })
+        // Set loading state when pricing data changes
+        this.pricingLoading = Object.keys(newVal || {}).length === 0
+      },
+      deep: true,
+      immediate: true
+    },
+    selectedSuite: {
+      handler(newVal, oldVal) {
+        console.log('TimeSelector selectedSuite changed:', { newVal, oldVal })
+      },
+      immediate: true
+    },
+    selectedDates: {
+      handler(newVal, oldVal) {
+        console.log('TimeSelector selectedDates changed:', { newVal, oldVal })
+      },
+      deep: true,
+      immediate: true
+    },
+    selectedDate: {
+      handler(newVal, oldVal) {
+        console.log('TimeSelector selectedDate changed:', { newVal, oldVal })
+      },
       immediate: true
     }
   },
@@ -337,6 +438,91 @@ export default {
       }
 
       return true // This combination is not available
+    },
+
+    calculateSuitePricingFromData(pricing, startDate, endDate, suite = null) {
+      console.log('TimeSelector calculateSuitePricingFromData called with:', {
+        pricing,
+        startDate,
+        endDate,
+        suite,
+        selectedSuite: this.selectedSuite,
+        service: this.service
+      })
+
+      const targetSuite = suite || this.selectedSuite
+      console.log('TimeSelector targetSuite:', targetSuite)
+
+      if (!targetSuite || !pricing) {
+        console.log('TimeSelector: No targetSuite or pricing, returning N/A')
+        return {
+          total: 'N/A',
+          calculation: ''
+        }
+      }
+
+      // Get pricing for the selected suite
+      const suitePricing = pricing[targetSuite.Id]
+      console.log('TimeSelector suitePricing for targetSuite.Id:', {
+        suiteId: targetSuite.Id,
+        suitePricing,
+        pricingKeys: Object.keys(pricing),
+        fullPricingObject: pricing
+      })
+
+      // Log all available suite IDs in pricing for comparison
+      const availableSuiteIds = Object.keys(pricing)
+      console.log('TimeSelector: Available suite IDs in pricing:', availableSuiteIds)
+      console.log('TimeSelector: Looking for suite ID match:', targetSuite.Id, 'in', availableSuiteIds)
+
+      if (suitePricing && suitePricing.Prices && suitePricing.Prices.length > 0) {
+        const serviceType = this.service?.Id === '86fcc6a7-75ce-457a-a425-b3850108b6bf' ? 'journée' : 'nuitée'
+        console.log('TimeSelector serviceType:', serviceType)
+
+        // For journée: sum all hourly prices, for nuitée: take the first (daily) price
+        if (serviceType === 'journée') {
+          const total = suitePricing.Prices.reduce((sum, price) => sum + price, 0)
+          const hours = suitePricing.Prices.length
+          const hourlyRate = suitePricing.Prices[0]
+
+          // For time-based bookings, the number of hours should be hours - 1
+          // because the API includes both start and end boundaries
+          const actualHours = hours - 1
+          const correctedTotal = actualHours * hourlyRate
+
+          console.log('TimeSelector journée calculation:', {
+            total,
+            hours,
+            hourlyRate,
+            actualHours,
+            correctedTotal
+          })
+
+          return {
+            total: correctedTotal,
+            calculation: `${hourlyRate}€ × ${actualHours}h`
+          }
+        } else {
+          // For nuitée, take the first price (daily rate) and multiply by number of nights
+          const numberOfNights = this.calculateNights()
+          console.log('TimeSelector nuitée calculation:', {
+            nightlyRate: suitePricing.Prices[0],
+            numberOfNights
+          })
+
+          return {
+            total: suitePricing.Prices[0] * numberOfNights,
+            calculation: `${suitePricing.Prices[0]}€ × ${numberOfNights} nuits`
+          }
+        }
+      } else {
+        console.log('TimeSelector: No pricing data available for suite')
+        // No pricing data available
+        return {
+          total: 'N/A',
+          calculation: ''
+        }
+      }
     }
   }
 }
@@ -490,10 +676,74 @@ export default {
   margin-top: 10px;
 }
 
+/* Pricing Display */
+.pricing-display {
+  background: rgba(201, 169, 97, 0.1);
+  border: 1px solid rgba(201, 169, 97, 0.3);
+  border-radius: 8px;
+  padding: 15px;
+  margin: 15px 0;
+  text-align: center;
+}
+
+.pricing-amount {
+  font-size: 24px;
+  font-weight: bold;
+  color: #c9a961;
+  margin-bottom: 5px;
+}
+
+.pricing-calculation {
+  font-size: 14px;
+  color: #999;
+  font-style: italic;
+}
+
+.pricing-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #c9a961;
+  font-style: italic;
+}
+
+.pricing-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #c9a961;
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: pricing-spin 1s linear infinite;
+}
+
+@keyframes pricing-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.pricing-unavailable {
+  color: #999;
+  font-style: italic;
+  text-align: center;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .summary-box {
     padding: 20px 15px;
+  }
+
+  .pricing-display {
+    padding: 12px;
+    margin: 12px 0;
+  }
+
+  .pricing-amount {
+    font-size: 20px;
+  }
+
+  .pricing-calculation {
+    font-size: 12px;
   }
 }
 </style>

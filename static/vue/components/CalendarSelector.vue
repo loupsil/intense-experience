@@ -175,6 +175,7 @@
           :date-availability="getDateAvailability(selectedDates.start)"
           :service="service"
           :selected-suite="selectedSuite"
+          :suite-pricing="suitePricing"
           @time-selected="handleTimeSelection"
           @book-suite="confirmSelection"
         />
@@ -205,6 +206,10 @@ export default {
     selectedSuite: {
       type: Object,
       default: null
+    },
+    suitePricing: {
+      type: Object,
+      default: () => ({})
     }
   },
   data() {
@@ -648,13 +653,21 @@ export default {
         // Set time to default day hours (13:00 - 18:00)
         this.selectedDates.start.setHours(13, 0, 0, 0)
         this.selectedDates.end.setHours(18, 0, 0, 0)
-        
+
         // Ensure availability data is loaded for this date (normalize to UTC midnight)
         const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
         const dateStr = utcDate.toISOString()
         if (!this.currentAvailability[dateStr]) {
           await this.fetchBulkAvailability([dateStr])
         }
+
+        // Emit date selection immediately for pricing calculation
+        console.log('CalendarSelector emitting preliminary date-selected for day booking')
+        this.$emit('date-selected', {
+          start: this.selectedDates.start.toISOString(),
+          end: this.selectedDates.end.toISOString(),
+          type: this.selectedBookingType
+        })
       }
     },
 
@@ -698,6 +711,14 @@ export default {
           this.selectedDates.end = new Date(selectedDate)
           this.selectedDates.end.setHours(this.nightCheckOutHour, 0, 0, 0)
           this.selectionMode = 'start'
+
+          // Emit date selection when both dates are selected for pricing calculation
+          console.log('CalendarSelector emitting preliminary date-selected for night booking')
+          this.$emit('date-selected', {
+            start: this.selectedDates.start.toISOString(),
+            end: this.selectedDates.end.toISOString(),
+            type: this.selectedBookingType
+          })
         }
       }
     },
@@ -797,7 +818,7 @@ export default {
         // Get the base date (date only, without time)
         const baseDate = new Date(this.selectedDates.start)
         baseDate.setHours(0, 0, 0, 0)
-        
+
         // Update start time with arrival time
         if (timeData.arrival) {
           const startDate = new Date(baseDate)
@@ -805,7 +826,7 @@ export default {
           startDate.setHours(parseInt(arrHours), parseInt(arrMinutes), 0, 0)
           this.selectedDates.start = startDate
         }
-        
+
         // Update end time with departure time
         if (timeData.departure) {
           const endDate = new Date(baseDate)
@@ -813,6 +834,14 @@ export default {
           endDate.setHours(parseInt(depHours), parseInt(depMinutes), 0, 0)
           this.selectedDates.end = endDate
         }
+
+        // Emit date update for pricing recalculation
+        console.log('CalendarSelector emitting time-updated date-selected for day booking')
+        this.$emit('date-selected', {
+          start: this.selectedDates.start.toISOString(),
+          end: this.selectedDates.end.toISOString(),
+          type: this.selectedBookingType
+        })
       }
     },
 
