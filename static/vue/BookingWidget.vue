@@ -126,14 +126,15 @@
       <div v-if="currentStep === 4 && !preselectedSuite && !preselectedSuiteId" class="step">
         <h2>Choose your suite</h2>
         <SuiteSelector
-          :suites="availableSuites"
-          :availability="suiteAvailability"
+          ref="suiteSelector"
+          :service="selectedService"
           :service-type="getServiceType()"
           :start-date="selectedDates.start"
           :end-date="selectedDates.end"
-          :pricing="suitePricing"
+          :preselected-suite="preselectedSuite"
           @suite-selected="selectSuite"
           @pricing-updated="updateSuitePricing"
+          @pricing-calculated="updatePricing"
           @pricing-requested="handlePricingRequest"
         />
         <div class="step-navigation">
@@ -323,8 +324,6 @@ export default {
       servicesError: null,
       selectedService: null,
       selectedDates: { start: null, end: null },
-      availableSuites: [],
-      suiteAvailability: {},
       selectedSuite: this.preselectedSuite,
       availableProducts: [],
       selectedOptions: [],
@@ -387,23 +386,6 @@ export default {
       }
     }
 
-    // Handle preselected suite (either from prop or URL parameter)
-    if (this.preselectedSuite || this.preselectedSuiteId) {
-      if (this.preselectedSuite) {
-        this.selectedSuite = this.preselectedSuite
-      } else if (this.preselectedSuiteId) {
-        await this.loadPreselectedSuite()
-      }
-
-      // Don't skip calendar step - always show it so user can choose dates
-      // Only skip suite selection step (step 4)
-      // If we're at step 2 (calendar), stay there
-      // If we're at step 1, go to step 2 (calendar)
-      if (this.currentStep === 1) {
-        this.currentStep = 2
-      }
-      // If we're at step 2, stay at step 2 (calendar) - user needs to select dates
-    }
   },
   methods: {
     async loadServices() {
@@ -428,26 +410,6 @@ export default {
       }
     },
 
-    async loadPreselectedSuite() {
-      try {
-        // We need to determine the service ID to fetch suites
-        const serviceId = this.selectedService?.Id || this.preselectedServiceId
-        if (!serviceId) return
-
-        const response = await fetch(`/intense_experience-api/suites?service_id=${serviceId}`)
-        const data = await response.json()
-
-        if (data.status === 'success' && data.suites) {
-          const suite = data.suites.find(s => s.Id === this.preselectedSuiteId)
-          if (suite) {
-            this.selectedSuite = suite
-            // Pricing will be loaded when dates are selected in handleDateSelection
-          }
-        }
-      } catch (error) {
-        console.error('Error loading preselected suite:', error)
-      }
-    },
 
     async handlePricingRequest(requestData) {
       const { serviceType, startDate, endDate } = requestData
@@ -498,53 +460,6 @@ export default {
       }
     },
 
-    async loadSuitePricing() {
-      if (!this.selectedService || !this.selectedSuite || !this.selectedDates.start || !this.selectedDates.end) {
-        return
-      }
-
-      try {
-        const rateId = this.getRateId()
-        if (!rateId) {
-          console.error('No rate ID available for service type')
-          return
-        }
-
-        const response = await fetch('/intense_experience-api/pricing', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            rate_id: rateId,
-            start_date: this.selectedDates.start,
-            end_date: this.selectedDates.end
-          })
-        })
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        const result = await response.json()
-        if (result.status === 'success') {
-          // Store pricing data by category ID (same format as SuiteSelector)
-          const pricing = {}
-          if (Array.isArray(result.pricing)) {
-            result.pricing.forEach(categoryPrice => {
-              pricing[categoryPrice.CategoryId] = categoryPrice
-            })
-          }
-
-          // Update suite pricing which will trigger calculateSuitePricing
-          this.updateSuitePricing(pricing)
-        } else {
-          console.error('BookingWidget: Failed to load pricing:', result.error)
-        }
-      } catch (error) {
-        console.error('BookingWidget: Error loading suite pricing:', error)
-      }
-    },
 
     getRateId() {
       // Return appropriate rate ID based on service type (same as SuiteSelector)
@@ -576,10 +491,6 @@ export default {
         end: dates.end
       }
 
-      // Load pricing for preselected suite when dates are selected
-      if (this.selectedSuite && !this.suitePricing[this.selectedSuite.Id]) {
-        await this.loadSuitePricing()
-      }
     },
 
     submitCustomerForm() {
@@ -631,128 +542,20 @@ export default {
       }
     },
 
-    async loadSuites() {
-      if (!this.selectedService) {
-        console.warn('No service selected')
-        return
-      }
-
-      this.loading = true
-      this.loadingMessage = 'Chargement des suites...'
-
-      try {
-        const response = await fetch(`/intense_experience-api/suites?service_id=${this.selectedService.Id}`)
-        const data = await response.json()
-
-        if (data.status === 'success') {
-          this.availableSuites = data.suites
-          await this.checkSuiteAvailability()
-        } else {
-          console.error('Failed to load suites:', data.error)
-        }
-      } catch (error) {
-        console.error('Error loading suites:', error)
-      } finally {
-        this.loading = false
-      }
-    },
-
-    async checkSuiteAvailability() {
-      if (!this.selectedDates.start || !this.selectedDates.end) {
-        console.warn('No dates selected - aborting availability check')
-        return
-      }
-
-      // Determine which suites to check availability for
-      let suitesToCheck = []
-      if (this.selectedSuite) {
-        suitesToCheck = [this.selectedSuite]
-      } else if (this.availableSuites && this.availableSuites.length > 0) {
-        suitesToCheck = this.availableSuites
-      } else {
-        console.warn('No suites available to check - aborting availability check')
-        return
-      }
-
-      this.loadingMessage = 'Vérification des disponibilités...'
-
-      try {
-        for (const suite of suitesToCheck) {
-          try {
-            const payload = {
-              service_id: this.selectedService.Id,
-              suite_id: suite.Id,
-              start_date: this.selectedDates.start,
-              end_date: this.selectedDates.end,
-              booking_type: this.bookingType
-            }
-
-            const response = await fetch('/intense_experience-api/availability', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            })
-
-            const data = await response.json()
-
-            if (data.status === 'success') {
-              this.suiteAvailability[suite.Id] = data.available
-            } else {
-              console.error(`Availability check failed for suite ${suite.Id}:`, data.error)
-              this.suiteAvailability[suite.Id] = false
-            }
-          } catch (error) {
-            console.error(`Error checking availability for suite ${suite.Id}:`, error)
-            this.suiteAvailability[suite.Id] = false
-          }
-        }
-      } catch (error) {
-        console.error('Error in availability check:', error)
-      }
-    },
 
     selectSuite(suite) {
       this.selectedSuite = suite
-      this.calculateSuitePricing()
     },
 
     updateSuitePricing(pricing) {
       this.suitePricing = pricing
-      if (this.selectedSuite) {
-        this.calculateSuitePricing()
-      }
     },
 
-    calculateSuitePricing() {
-      if (!this.selectedSuite || !this.suitePricing) {
-        return
-      }
-
-      // Get pricing for the selected suite
-      const suitePricing = this.suitePricing[this.selectedSuite.Id]
-
-      if (suitePricing && suitePricing.Prices && suitePricing.Prices.length > 0) {
-        // For journée: sum all hourly prices, for nuitée: take the first (daily) price
-        if (this.getServiceType() === 'journée') {
-          const total = suitePricing.Prices.reduce((sum, price) => sum + price, 0)
-          const hours = suitePricing.Prices.length
-          const hourlyRate = suitePricing.Prices[0]
-
-          // For time-based bookings, the number of hours should be hours - 1
-          // because the API includes both start and end boundaries
-          const actualHours = hours - 1
-          const correctedTotal = actualHours * hourlyRate
-
-          this.pricing.total = correctedTotal
-        } else {
-          // For nuitée, take the first price (daily rate) and multiply by number of nights
-          this.pricing.total = suitePricing.Prices[0] * this.numberOfNights
-        }
-      } else {
-        // No pricing data available
-        this.pricing.total = 'N/A'
-      }
+    updatePricing(pricingData) {
+      this.pricing.total = pricingData.total
+      this.pricing.options = pricingData.options
     },
+
 
     updateOptions(options, totalPrice) {
       this.selectedOptions = options
@@ -807,7 +610,6 @@ export default {
         this.currentStep = 3
       } else if (this.currentStep === 3) {
         if (this.accessPoint === 'general') {
-          await this.loadSuites()
           // Skip suite selection if suite is preselected
           if (this.selectedSuite) {
             this.currentStep = 5
@@ -837,35 +639,10 @@ export default {
     },
 
     getSuitePriceInfo() {
-      if (!this.selectedSuite || !this.suitePricing) {
-        return { price: this.pricing.total, calculation: '' }
+      if (this.$refs.suiteSelector) {
+        return this.$refs.suiteSelector.getSuitePriceInfo()
       }
-
-      const suitePricing = this.suitePricing[this.selectedSuite.Id]
-
-      if (!suitePricing || !suitePricing.Prices || suitePricing.Prices.length === 0) {
-        return { price: this.pricing.total, calculation: '' }
-      }
-
-      let calculation = ''
-      let finalPrice = this.pricing.total
-
-      if (this.getServiceType() === 'journée') {
-        // For day stays, show the hourly calculation
-        const hours = suitePricing.Prices.length
-        const actualHours = hours - 1
-        const hourlyRate = suitePricing.Prices[0]
-        calculation = `${hourlyRate}€ × ${actualHours}h`
-      } else {
-        // For night stays, show daily rate × nights
-        const dailyRate = suitePricing.Prices[0]
-        calculation = `${dailyRate}€ × ${this.numberOfNights} nuits`
-      }
-
-      return {
-        price: finalPrice,
-        calculation
-      }
+      return { price: this.pricing.total, calculation: '' }
     },
 
     getServiceDescription(serviceId) {

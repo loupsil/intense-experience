@@ -1,50 +1,64 @@
 <template>
   <div class="suite-selector">
-    <div class="suites-grid">
+    <!-- Loading state -->
+    <div v-if="isLoadingSuites" class="suites-loading">
+      <div class="spinner"></div>
+      <p>Loading available suites...</p>
+    </div>
+
+    <!-- Suites loaded -->
+    <div v-else class="suites-grid">
       <div
-        v-for="suite in suites"
+        v-for="suite in availableSuites"
         :key="suite.Id"
         class="suite-card"
         :class="{
           selected: selectedSuite?.Id === suite.Id,
-          available: availability[suite.Id],
-          unavailable: !availability[suite.Id]
+          available: suiteAvailability[suite.Id],
+          unavailable: !suiteAvailability[suite.Id]
         }"
-        @click="availability[suite.Id] ? selectSuite(suite) : null"
+        @click="suiteAvailability[suite.Id] ? selectSuite(suite) : null"
       >
         <div class="suite-header">
           <h3>{{ suite.Names['fr-FR'] || suite.Name }}</h3>
           <div class="availability-badge">
             <span
-              :class="availability[suite.Id] ? 'available-badge' : 'unavailable-badge'"
+              :class="suiteAvailability[suite.Id] ? 'available-badge' : 'unavailable-badge'"
             >
-              {{ availability[suite.Id] ? 'Disponible' : 'Indisponible' }}
+              {{ suiteAvailability[suite.Id] ? 'Disponible' : 'Indisponible' }}
             </span>
           </div>
         </div>
 
         <div class="suite-image">
-          <!-- Placeholder for suite image -->
-          <div class="image-placeholder">
+          <!-- Suite image or placeholder -->
+          <div v-if="getCurrentImageUrl(suite.Id)" class="suite-image-container">
+            <img
+              :src="getCurrentImageUrl(suite.Id)"
+              :alt="suite.Names['fr-FR'] || suite.Name"
+              class="suite-img"
+              :class="{ 'clickable': getImageCount(suite.Id) > 1 }"
+              @click="cycleSuiteImage(suite.Id)"
+            />
+            <!-- Image indicators for multiple images -->
+            <div v-if="getImageCount(suite.Id) > 1" class="image-indicators">
+              <span
+                v-for="(image, index) in suiteImages[suite.Id]"
+                :key="index"
+                class="image-dot"
+                :class="{ 'active': (currentImageIndex[suite.Id] || 0) === index }"
+              ></span>
+            </div>
+          </div>
+          <div v-else class="image-placeholder">
             <i class="fas fa-bed"></i>
           </div>
         </div>
 
         <div class="suite-details">
-          <p class="suite-description">
-            {{ suite.Descriptions?.['fr-FR'] || 'Suite exclusive avec équipements premium' }}
+          <p v-if="getSuiteDescription(suite)" class="suite-description">
+            {{ getSuiteDescription(suite) }}
           </p>
-
-          <div class="suite-features">
-            <div class="feature">
-              <i class="fas fa-users"></i>
-              <span>Jusqu'à {{ suite.Capacity }} personnes</span>
-            </div>
-            <div class="feature">
-              <i class="fas fa-expand-arrows-alt"></i>
-              <span>{{ suite.ExtraCapacity || 0 }}m² supplémentaires</span>
-            </div>
-          </div>
         </div>
 
         <div class="suite-footer">
@@ -55,7 +69,7 @@
 
           <button
             class="select-suite-btn"
-            :disabled="!availability[suite.Id]"
+            :disabled="!suiteAvailability[suite.Id]"
             @click.stop="selectSuite(suite)"
           >
             {{ selectedSuite?.Id === suite.Id ? 'Sélectionnée' : 'Sélectionner' }}
@@ -72,11 +86,11 @@ export default {
   props: {
     suites: {
       type: Array,
-      required: true
+      default: () => []
     },
     availability: {
       type: Object,
-      required: true
+      default: () => ({})
     },
     serviceType: {
       type: String,
@@ -94,26 +108,67 @@ export default {
     pricing: {
       type: Object,
       default: () => ({})
+    },
+    preselectedSuite: {
+      type: Object,
+      default: null
+    },
+    service: {
+      type: Object,
+      default: null
     }
   },
+  emits: [
+    'suite-selected',
+    'pricing-requested',
+    'suites-loaded',
+    'availability-checked',
+    'pricing-updated',
+    'pricing-calculated'
+  ],
   data() {
     return {
-      selectedSuite: null,
-      loading: false
+      selectedSuite: this.preselectedSuite,
+      availableSuites: [],
+      suiteAvailability: {},
+      suitePricing: {},
+      suiteImages: {}, // Will now store arrays of images per suite
+      currentImageIndex: {}, // Track current image index for each suite
+      pricing: { total: 0, options: 0 },
+      loading: false,
+      isLoadingSuites: false
     }
   },
   watch: {
     serviceType: 'requestPricing',
     startDate: 'requestPricing',
-    endDate: 'requestPricing'
+    endDate: 'requestPricing',
+    preselectedSuite: {
+      handler(newSuite) {
+        this.selectedSuite = newSuite
+      },
+      immediate: true
+    },
+    service: {
+      handler(newService) {
+        if (newService) {
+          this.loadSuites()
+        }
+      },
+      immediate: true
+    }
   },
   mounted() {
     this.requestPricing()
+    if (this.service) {
+      this.loadSuites()
+    }
   },
   methods: {
     selectSuite(suite) {
-      if (this.availability[suite.Id]) {
+      if (this.suiteAvailability[suite.Id]) {
         this.selectedSuite = suite
+        this.calculateSuitePricing()
         this.$emit('suite-selected', suite)
       }
     },
@@ -129,7 +184,7 @@ export default {
 
     getSuiteBasePrice(suite) {
       // Get price from API pricing data
-      const categoryPrice = this.pricing[suite.Id]
+      const categoryPrice = this.suitePricing[suite.Id]
       if (categoryPrice && categoryPrice.Prices && categoryPrice.Prices.length > 0) {
         // For journée: sum all hourly prices, for nuitée: take the first (daily) price
         if (this.serviceType === 'journée') {
@@ -151,6 +206,286 @@ export default {
 
       // No pricing data available
       return 'N/A'
+    },
+
+    getSuiteDescription(suite) {
+      // Get the first available description from any language
+      if (suite.Descriptions && typeof suite.Descriptions === 'object') {
+        const descriptionKeys = Object.keys(suite.Descriptions)
+        if (descriptionKeys.length > 0) {
+          return suite.Descriptions[descriptionKeys[0]]
+        }
+      }
+      // No fallback - return empty string if no descriptions are available
+      return ''
+    },
+
+    async loadSuites() {
+      if (!this.service) {
+        console.warn('No service selected')
+        return
+      }
+
+      this.isLoadingSuites = true
+
+      try {
+        const response = await fetch(`/intense_experience-api/suites?service_id=${this.service.Id}`)
+        const data = await response.json()
+
+        if (data.status === 'success') {
+          this.availableSuites = data.suites
+          await this.checkSuiteAvailability()
+          await this.loadSuiteImages()
+          this.$emit('suites-loaded', this.availableSuites)
+        } else {
+          console.error('Failed to load suites:', data.error)
+        }
+      } catch (error) {
+        console.error('Error loading suites:', error)
+      } finally {
+        this.isLoadingSuites = false
+      }
+    },
+
+    async loadSuiteImages() {
+      if (!this.availableSuites || this.availableSuites.length === 0) {
+        return
+      }
+
+      try {
+        // Extract category IDs from suites
+        const categoryIds = this.availableSuites.map(suite => suite.Id)
+
+        // Get image assignments for these categories
+        const assignmentsResponse = await fetch('/intense_experience-api/resource-category-images', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category_ids: categoryIds })
+        })
+
+        const assignmentsData = await assignmentsResponse.json()
+
+        if (assignmentsData.status === 'success') {
+          // Group all assignments by category, sorted by ordering
+          const categoryImages = {}
+          assignmentsData.image_assignments.forEach(assignment => {
+            const categoryId = assignment.CategoryId
+            if (!categoryImages[categoryId]) {
+              categoryImages[categoryId] = []
+            }
+            categoryImages[categoryId].push(assignment)
+          })
+
+          // Sort images by ordering within each category
+          Object.keys(categoryImages).forEach(categoryId => {
+            categoryImages[categoryId].sort((a, b) => a.Ordering - b.Ordering)
+          })
+
+          // Extract all image IDs
+          const allAssignments = Object.values(categoryImages).flat()
+          const imageIds = allAssignments.map(assignment => assignment.ImageId)
+
+          if (imageIds.length > 0) {
+            // Get image URLs
+            const urlsResponse = await fetch('/intense_experience-api/images/get-urls', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image_ids: imageIds })
+            })
+
+            const urlsData = await urlsResponse.json()
+
+            if (urlsData.status === 'success') {
+              // Create image URL map
+              const imageUrlMap = {}
+              urlsData.image_urls.forEach(imageUrl => {
+                imageUrlMap[imageUrl.ImageId] = imageUrl.Url
+              })
+
+              // Map URLs back to categories as arrays
+              Object.keys(categoryImages).forEach(categoryId => {
+                this.suiteImages[categoryId] = categoryImages[categoryId].map(assignment =>
+                  imageUrlMap[assignment.ImageId]
+                ).filter(url => url) // Remove any undefined URLs
+                this.currentImageIndex[categoryId] = 0 // Start with first image
+              })
+            } else {
+              console.error('Failed to fetch image URLs:', urlsData.error)
+            }
+          }
+        } else {
+          console.error('Failed to fetch image assignments:', assignmentsData.error)
+        }
+      } catch (error) {
+        console.error('Error loading suite images:', error)
+      }
+    },
+
+    async checkSuiteAvailability() {
+      if (!this.startDate || !this.endDate) {
+        console.warn('No dates selected - aborting availability check')
+        return
+      }
+
+      // Determine which suites to check availability for
+      let suitesToCheck = []
+      if (this.selectedSuite) {
+        suitesToCheck = [this.selectedSuite]
+      } else if (this.availableSuites && this.availableSuites.length > 0) {
+        suitesToCheck = this.availableSuites
+      } else {
+        console.warn('No suites available to check - aborting availability check')
+        return
+      }
+
+      try {
+        for (const suite of suitesToCheck) {
+          try {
+            const payload = {
+              service_id: this.service.Id,
+              suite_id: suite.Id,
+              start_date: this.startDate,
+              end_date: this.endDate,
+              booking_type: this.serviceType === 'journée' ? 'day' : 'night'
+            }
+
+            const response = await fetch('/intense_experience-api/availability', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            })
+
+            const data = await response.json()
+
+            if (data.status === 'success') {
+              this.suiteAvailability[suite.Id] = data.available
+            } else {
+              console.error(`Availability check failed for suite ${suite.Id}:`, data.error)
+              this.suiteAvailability[suite.Id] = false
+            }
+          } catch (error) {
+            console.error(`Error checking availability for suite ${suite.Id}:`, error)
+            this.suiteAvailability[suite.Id] = false
+          }
+        }
+        this.$emit('availability-checked', this.suiteAvailability)
+      } catch (error) {
+        console.error('Error in availability check:', error)
+      }
+    },
+
+    updateSuitePricing(pricing) {
+      this.suitePricing = pricing
+      if (this.selectedSuite) {
+        this.calculateSuitePricing()
+      }
+      this.$emit('pricing-updated', pricing)
+    },
+
+    calculateSuitePricing() {
+      if (!this.selectedSuite || !this.suitePricing) {
+        return
+      }
+
+      // Get pricing for the selected suite
+      const suitePricing = this.suitePricing[this.selectedSuite.Id]
+
+      if (suitePricing && suitePricing.Prices && suitePricing.Prices.length > 0) {
+        // For journée: sum all hourly prices, for nuitée: take the first (daily) price
+        if (this.serviceType === 'journée') {
+          const total = suitePricing.Prices.reduce((sum, price) => sum + price, 0)
+          const hours = suitePricing.Prices.length
+          const hourlyRate = suitePricing.Prices[0]
+
+          // For time-based bookings, the number of hours should be hours - 1
+          // because the API includes both start and end boundaries
+          const actualHours = hours - 1
+          const correctedTotal = actualHours * hourlyRate
+
+          this.pricing.total = correctedTotal
+        } else {
+          // For nuitée, take the first price (daily rate) and multiply by number of nights
+          const numberOfNights = this.calculateNumberOfNights()
+          this.pricing.total = suitePricing.Prices[0] * numberOfNights
+        }
+      } else {
+        // No pricing data available
+        this.pricing.total = 'N/A'
+      }
+      this.$emit('pricing-calculated', { total: this.pricing.total, options: this.pricing.options })
+    },
+
+    calculateNumberOfNights() {
+      if (!this.startDate || !this.endDate) {
+        return 1
+      }
+
+      const start = new Date(this.startDate)
+      const end = new Date(this.endDate)
+      const diffTime = Math.abs(end - start)
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+      // For night stays, number of nights is typically diffDays - 1
+      // But according to user, PerPersonPerTimeUnit should be for nights, so return diffDays
+      return diffDays
+    },
+
+    cycleSuiteImage(suiteId) {
+      const images = this.suiteImages[suiteId]
+      if (!images || images.length <= 1) {
+        return // No cycling needed if only one or no images
+      }
+
+      const currentIndex = this.currentImageIndex[suiteId] || 0
+      const nextIndex = (currentIndex + 1) % images.length
+      this.currentImageIndex[suiteId] = nextIndex
+    },
+
+    getCurrentImageUrl(suiteId) {
+      const images = this.suiteImages[suiteId]
+      if (!images || images.length === 0) {
+        return null
+      }
+      const currentIndex = this.currentImageIndex[suiteId] || 0
+      return images[currentIndex]
+    },
+
+    getImageCount(suiteId) {
+      const images = this.suiteImages[suiteId]
+      return images ? images.length : 0
+    },
+
+    getSuitePriceInfo() {
+      if (!this.selectedSuite || !this.suitePricing) {
+        return { price: this.pricing.total, calculation: '' }
+      }
+
+      const suitePricing = this.suitePricing[this.selectedSuite.Id]
+
+      if (!suitePricing || !suitePricing.Prices || suitePricing.Prices.length === 0) {
+        return { price: this.pricing.total, calculation: '' }
+      }
+
+      let calculation = ''
+      let finalPrice = this.pricing.total
+
+      if (this.serviceType === 'journée') {
+        // For day stays, show the hourly calculation
+        const hours = suitePricing.Prices.length
+        const actualHours = hours - 1
+        const hourlyRate = suitePricing.Prices[0]
+        calculation = `${hourlyRate}€ × ${actualHours}h`
+      } else {
+        // For night stays, show daily rate × nights
+        const dailyRate = suitePricing.Prices[0]
+        const numberOfNights = this.calculateNumberOfNights()
+        calculation = `${dailyRate}€ × ${numberOfNights} nuits`
+      }
+
+      return {
+        price: finalPrice,
+        calculation
+      }
     }
   }
 }
@@ -236,6 +571,50 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.suite-image-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.suite-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.3s ease;
+}
+
+.suite-img.clickable {
+  cursor: pointer;
+}
+
+.suite-img.clickable:hover {
+  opacity: 0.9;
+}
+
+.image-indicators {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+}
+
+.image-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  transition: background-color 0.3s ease;
+}
+
+.image-dot.active {
+  background: rgba(255, 255, 255, 1);
 }
 
 .image-placeholder {
@@ -355,6 +734,27 @@ export default {
   border-radius: 20px;
   font-size: 14px;
   font-weight: 500;
+}
+
+.suites-loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.suites-loading .spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #c9a961;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 /* Responsive */

@@ -304,6 +304,27 @@ def get_products():
         return jsonify({"products": result["Products"], "status": "success"})
     return jsonify({"error": "Failed to fetch products", "status": "error"}), 500
 
+@intense_experience_bp.route('/intense_experience-api/resource-category-images', methods=['POST'])
+def get_resource_category_images():
+    """Get image assignments for resource categories"""
+    data = request.json
+    category_ids = data.get('category_ids', [])
+
+    if not category_ids:
+        return jsonify({"error": "No category IDs provided", "status": "error"}), 400
+
+    payload = {
+        "Client": "Intense Experience Booking",
+        "ResourceCategoryIds": category_ids,
+        "EnterpriseIds": [ENTERPRISE_ID],
+        "Limitation": {"Count": 100}
+    }
+
+    result = make_mews_request("resourceCategoryImageAssignments/getAll", payload)
+    if result and "ResourceCategoryImageAssignments" in result:
+        return jsonify({"image_assignments": result["ResourceCategoryImageAssignments"], "status": "success"})
+    return jsonify({"error": "Failed to fetch image assignments", "status": "error"}), 500
+
 @intense_experience_bp.route('/intense_experience-api/images/get-urls', methods=['POST'])
 def get_image_urls():
     """Get image URLs for given image IDs"""
