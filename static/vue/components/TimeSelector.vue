@@ -1,5 +1,16 @@
 <template>
   <div class="time-selector">
+    <!-- Pricing display for preselected suite -->
+    <div v-if="selectedSuite" class="pricing-display">
+      <div class="pricing-header">TOTAL</div>
+      <div v-if="pricingLoading" class="pricing-loading">
+        <div class="pricing-spinner"></div>
+      </div>
+      <div v-else-if="canBook && pricingInfo && pricingInfo.total !== 'N/A'" class="pricing-details">{{ pricingInfo.total }}€ <span v-if="pricingInfo.calculation" class="pricing-calculation">({{ pricingInfo.calculation }})</span></div>
+      <div v-else-if="!canBook" class="pricing-details pricing-details-italic">Select dates & times</div>
+      <div v-else class="pricing-details">Pricing unavailable</div>
+    </div>
+
     <!-- Day Booking: Time Selection -->
     <div v-if="bookingType === 'day'" class="time-selection">
       <div class="summary-box">
@@ -42,21 +53,6 @@
           {{ validationMessage }}
         </div>
 
-        <!-- Pricing display for preselected suite -->
-        <div v-if="selectedSuite && canBook" class="pricing-display">
-          <div v-if="pricingLoading" class="pricing-loading">
-            <div class="pricing-spinner"></div>
-            <span>Calculating...</span>
-          </div>
-          <div v-else-if="pricingInfo && pricingInfo.total !== 'N/A'" class="pricing-content">
-            <div class="pricing-amount">{{ pricingInfo.total }}€</div>
-            <div v-if="pricingInfo.calculation" class="pricing-calculation">{{ pricingInfo.calculation }}</div>
-          </div>
-          <div v-else class="pricing-unavailable">
-            Pricing unavailable
-          </div>
-        </div>
-
         <button class="book-btn" :disabled="!canBook" @click="bookSuite">BOOK A SUITE</button>
         <div class="no-charge-text">You won't be charged yet</div>
       </div>
@@ -73,21 +69,6 @@
           <div class="detail-row">
             <div class="detail-label">CHECK OUT</div>
             <div class="detail-value">{{ formatDateShort(selectedDates.end) || 'Select date' }}</div>
-          </div>
-        </div>
-
-        <!-- Pricing display for preselected suite -->
-        <div v-if="selectedSuite && canBook" class="pricing-display">
-          <div v-if="pricingLoading" class="pricing-loading">
-            <div class="pricing-spinner"></div>
-            <span>Calculating...</span>
-          </div>
-          <div v-else-if="pricingInfo && pricingInfo.total !== 'N/A'" class="pricing-content">
-            <div class="pricing-amount">{{ pricingInfo.total }}€</div>
-            <div v-if="pricingInfo.calculation" class="pricing-calculation">{{ pricingInfo.calculation }}</div>
-          </div>
-          <div v-else class="pricing-unavailable">
-            Pricing unavailable
           </div>
         </div>
 
@@ -174,7 +155,9 @@ export default {
         suitePricing: this.suitePricing,
         bookingType: this.bookingType,
         selectedDate: this.selectedDate,
-        selectedDates: this.selectedDates
+        selectedDates: this.selectedDates,
+        selectedArrival: this.selectedArrival,
+        selectedDeparture: this.selectedDeparture
       })
 
       if (!this.selectedSuite || !this.suitePricing) {
@@ -182,15 +165,38 @@ export default {
         return null
       }
 
-      const startDate = this.bookingType === 'day' ? this.selectedDate : this.selectedDates.start
-      const endDate = this.bookingType === 'day' ? this.selectedDate : this.selectedDates.end
+      let startDate, endDate
 
-      console.log('TimeSelector: startDate and endDate:', { startDate, endDate })
+      if (this.bookingType === 'day') {
+        // For day bookings, only calculate pricing when date and times are selected
+        if (!this.selectedDate || !this.selectedArrival || !this.selectedDeparture) {
+          console.log('TimeSelector: Missing date or times for day booking, returning null')
+          return null
+        }
 
-      if (!startDate || !endDate) {
-        console.log('TimeSelector: Missing startDate or endDate, returning null')
-        return null
+        // Create Date objects with the selected times
+        const baseDate = new Date(this.selectedDate)
+        baseDate.setHours(0, 0, 0, 0)
+
+        const [arrHours, arrMinutes] = this.selectedArrival.split(':')
+        startDate = new Date(baseDate)
+        startDate.setHours(parseInt(arrHours), parseInt(arrMinutes), 0, 0)
+
+        const [depHours, depMinutes] = this.selectedDeparture.split(':')
+        endDate = new Date(baseDate)
+        endDate.setHours(parseInt(depHours), parseInt(depMinutes), 0, 0)
+      } else {
+        // For night bookings, use the selectedDates
+        startDate = this.selectedDates.start
+        endDate = this.selectedDates.end
+
+        if (!startDate || !endDate) {
+          console.log('TimeSelector: Missing startDate or endDate for night booking, returning null')
+          return null
+        }
       }
+
+      console.log('TimeSelector: calculated startDate and endDate:', { startDate, endDate })
 
       const result = this.calculateSuitePricingFromData(this.suitePricing, startDate, endDate)
       console.log('TimeSelector: calculateSuitePricingFromData result:', result)
@@ -253,8 +259,11 @@ export default {
     suitePricing: {
       handler(newVal, oldVal) {
         console.log('TimeSelector suitePricing changed:', { newVal, oldVal })
-        // Set loading state when pricing data changes
-        this.pricingLoading = Object.keys(newVal || {}).length === 0
+        // Only set loading to false when pricing data becomes available
+        // Loading state is managed by pricingInfo computed property
+        if (Object.keys(newVal || {}).length > 0) {
+          this.pricingLoading = false
+        }
       },
       deep: true,
       immediate: true
@@ -539,7 +548,7 @@ export default {
 .summary-box {
   background: var(--timeselector-background, #2d2d2d);
   color: white;
-  padding: 30px 20px;
+  padding: 20px 20px;
   border-radius: 12px;
   display: flex;
   flex-direction: column;
@@ -637,6 +646,11 @@ export default {
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+/* Night booking pricing styles */
+.date-confirmation .pricing-details {
+  color: #999999 !important;
+}
+
 /* Book Button */
 .book-btn {
   background: #c9a961;
@@ -678,33 +692,58 @@ export default {
 
 /* Pricing Display */
 .pricing-display {
-  background: rgba(201, 169, 97, 0.1);
-  border: 1px solid rgba(201, 169, 97, 0.3);
-  border-radius: 8px;
-  padding: 15px;
-  margin: 15px 0;
-  text-align: center;
+  border-bottom: 1px solid rgba(51, 51, 51, 0.2);
+  padding: 20px 20px 10px 20px;
+  text-align: left;
+}
+
+.pricing-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pricing-header {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #999;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.pricing-details {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 24px;
+  font-weight: 600;
+  color: #333;
+}
+
+.pricing-details-italic {
+  font-style: italic;
+  color: #999;
+  font-size: 16px;
+  font-weight: normal;
 }
 
 .pricing-amount {
-  font-size: 24px;
-  font-weight: bold;
-  color: #c9a961;
-  margin-bottom: 5px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
 }
 
 .pricing-calculation {
-  font-size: 14px;
+  font-size: 12px;
   color: #999;
   font-style: italic;
 }
 
 .pricing-loading {
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 8px;
-  color: #c9a961;
-  font-style: italic;
+  min-height: 32px;
 }
 
 .pricing-spinner {
@@ -724,7 +763,7 @@ export default {
 .pricing-unavailable {
   color: #999;
   font-style: italic;
-  text-align: center;
+  font-size: 12px;
 }
 
 /* Responsive */
@@ -734,16 +773,24 @@ export default {
   }
 
   .pricing-display {
-    padding: 12px;
-    margin: 12px 0;
+    padding: 15px 15px 12px 15px;
+    margin-bottom: 15px;
   }
 
-  .pricing-amount {
+  .pricing-header {
+    font-size: 10px;
+  }
+
+  .pricing-details {
     font-size: 20px;
   }
 
+  .pricing-details-italic {
+    font-size: 14px;
+  }
+
   .pricing-calculation {
-    font-size: 12px;
+    font-size: 11px;
   }
 }
 </style>

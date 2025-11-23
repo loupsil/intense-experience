@@ -650,9 +650,7 @@ export default {
           start: new Date(date),
           end: new Date(date)
         }
-        // Set time to default day hours (13:00 - 18:00)
-        this.selectedDates.start.setHours(13, 0, 0, 0)
-        this.selectedDates.end.setHours(18, 0, 0, 0)
+        // Note: Don't set default times here - TimeSelector will handle time selection
 
         // Ensure availability data is loaded for this date (normalize to UTC midnight)
         const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
@@ -661,13 +659,8 @@ export default {
           await this.fetchBulkAvailability([dateStr])
         }
 
-        // Emit date selection immediately for pricing calculation
-        console.log('CalendarSelector emitting preliminary date-selected for day booking')
-        this.$emit('date-selected', {
-          start: this.selectedDates.start.toISOString(),
-          end: this.selectedDates.end.toISOString(),
-          type: this.selectedBookingType
-        })
+        // For day bookings, don't emit date-selected until times are selected
+        // This prevents premature pricing calculation
       }
     },
 
