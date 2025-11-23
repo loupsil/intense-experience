@@ -17,6 +17,7 @@
                 <div class="month-header">
                   <button @click="previousMonth" class="nav-btn">&larr;</button>
                   <h4>{{ formatMonthYear(currentMonth) }}</h4>
+                  <button v-if="isMobile" @click="nextMonth" class="nav-btn">&rarr;</button>
                 </div>
                 <div class="calendar-header">
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
@@ -47,8 +48,8 @@
                 </div>
               </div>
 
-              <!-- Next Month -->
-              <div class="month-calendar">
+              <!-- Next Month (hidden on mobile) -->
+              <div v-if="!isMobile" class="month-calendar">
                 <div class="month-header">
                   <h4>{{ formatMonthYear(nextMonthDate) }}</h4>
                   <button @click="nextMonth" class="nav-btn">&rarr;</button>
@@ -91,6 +92,7 @@
                 <div class="month-header">
                   <button @click="previousMonth" class="nav-btn">&larr;</button>
                   <h4>{{ formatMonthYear(currentMonth) }}</h4>
+                  <button v-if="isMobile" @click="nextMonth" class="nav-btn">&rarr;</button>
                 </div>
                 <div class="calendar-header">
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
@@ -123,8 +125,8 @@
                 </div>
               </div>
 
-              <!-- Next Month -->
-              <div class="month-calendar">
+              <!-- Next Month (hidden on mobile) -->
+              <div v-if="!isMobile" class="month-calendar">
                 <div class="month-header">
                   <h4>{{ formatMonthYear(nextMonthDate) }}</h4>
                   <button @click="nextMonth" class="nav-btn">&rarr;</button>
@@ -239,6 +241,9 @@ export default {
       const next = new Date(this.currentMonth)
       next.setMonth(next.getMonth() + 1)
       return next
+    },
+    isMobile() {
+      return window.innerWidth <= 768
     }
   },
   watch: {
