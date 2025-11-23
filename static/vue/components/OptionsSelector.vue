@@ -5,7 +5,14 @@
       Personnalisez votre expérience avec nos options premium
     </p>
 
-    <div class="options-grid">
+    <!-- Loading state -->
+    <div v-if="isLoadingProducts" class="options-loading">
+      <div class="spinner"></div>
+      <p>Chargement des options disponibles...</p>
+    </div>
+
+    <!-- Options loaded -->
+    <div v-else class="options-grid">
       <div
         v-for="product in products"
         :key="product.Id"
@@ -16,7 +23,10 @@
         <div class="option-header">
           <h4>{{ product.Names?.['fr-FR'] || product.Name }}</h4>
           <div class="option-price">
-            <span class="price">{{ getProductPrice(product) }}€</span>
+            <span class="price">{{ getProductPriceInfo(product).price }}€</span>
+            <span class="calculation" v-if="getProductPriceInfo(product).calculation !== getProductPriceInfo(product).price + '€'">
+              ({{ getProductPriceInfo(product).calculation }})
+            </span>
             <span v-if="product.Pricing?.Type === 'PerPerson'" class="per-person">/pers.</span>
           </div>
         </div>
@@ -27,13 +37,13 @@
 
         <div class="option-meta">
           <span class="category-badge">{{ getCategoryName(product) }}</span>
+          <span v-if="getChargingInfo(product)" class="charging-badge">{{ getChargingInfo(product) }}</span>
           <div class="selection-indicator">
             <i :class="isSelected(product) ? 'fas fa-check-circle' : 'far fa-circle'"></i>
           </div>
         </div>
       </div>
     </div>
-
 
   </div>
 </template>
@@ -49,11 +59,26 @@ export default {
     selectedOptions: {
       type: Array,
       default: () => []
+    },
+    serviceId: {
+      type: String,
+      default: ''
+    },
+    numberOfNights: {
+      type: Number,
+      default: 1
     }
   },
   data() {
     return {
-      localSelectedOptions: [...this.selectedOptions]
+      localSelectedOptions: [...this.selectedOptions],
+      isLoadingProducts: false
+    }
+  },
+  mounted() {
+    // Load products if we have a serviceId but no products loaded
+    if (this.serviceId && this.products.length === 0) {
+      this.loadProducts()
     }
   },
   watch: {
@@ -62,6 +87,14 @@ export default {
         this.localSelectedOptions = [...newOptions]
       },
       deep: true
+    },
+    serviceId: {
+      handler(newServiceId) {
+        // Load products when service changes
+        if (newServiceId && this.products.length === 0) {
+          this.loadProducts()
+        }
+      }
     }
   },
   methods: {
@@ -79,24 +112,99 @@ export default {
       this.emitUpdate()
     },
 
+    calculateOptionsTotal() {
+      // Calculate total price of all selected options
+      return this.localSelectedOptions.reduce((sum, option) => {
+        const price = this.getProductPriceInfo(option).price
+        return sum + (typeof price === 'number' ? price : 0)
+      }, 0)
+    },
+
     emitUpdate() {
-      this.$emit('options-updated', [...this.localSelectedOptions])
+      // Add price information to selected options
+      const optionsWithPrices = this.localSelectedOptions.map(option => ({
+        ...option,
+        calculatedPrice: this.getProductPriceInfo(option).price,
+        priceCalculation: this.getProductPriceInfo(option).calculation
+      }))
+
+      // Calculate total options price
+      const totalOptionsPrice = this.calculateOptionsTotal()
+
+      // Emit both selected options and total price
+      this.$emit('options-updated', optionsWithPrices, totalOptionsPrice)
     },
 
     getProductPrice(product) {
-      // Extract price from product data (Mews API format)
+      // Extract base price from product data (Mews API format)
+      let basePrice = null
+
       if (product.Price && typeof product.Price.GrossValue === 'number') {
-        return product.Price.GrossValue
+        basePrice = product.Price.GrossValue
+      } else if (product.Pricing && product.Pricing.Value && typeof product.Pricing.Value.GrossValue === 'number') {
+        basePrice = product.Pricing.Value.GrossValue
+      } else {
+        // No price found - return error indicator
+        console.error('Price not found for product:', product.Name || product.Id)
+        return 'N/A'
       }
 
-      // Try pricing field as well
-      if (product.Pricing && product.Pricing.Value && typeof product.Pricing.Value.GrossValue === 'number') {
-        return product.Pricing.Value.GrossValue
+      // Calculate price based on charging type
+      const charging = product.Charging
+
+      switch (charging) {
+        case 'Once':
+          return basePrice
+        case 'PerPerson':
+          return basePrice * 2 // For 2 people
+        case 'PerPersonPerTimeUnit':
+          return basePrice * 2 * this.numberOfNights // For 2 people per night
+        default:
+          return basePrice
+      }
+    },
+
+    getProductPriceInfo(product) {
+      // Extract base price from product data (Mews API format)
+      let basePrice = null
+
+      if (product.Price && typeof product.Price.GrossValue === 'number') {
+        basePrice = product.Price.GrossValue
+      } else if (product.Pricing && product.Pricing.Value && typeof product.Pricing.Value.GrossValue === 'number') {
+        basePrice = product.Pricing.Value.GrossValue
+      } else {
+        // No price found - return error indicator
+        console.error('Price not found for product:', product.Name || product.Id)
+        return { calculation: 'N/A', price: 'N/A' }
       }
 
-      // No price found - return error indicator
-      console.error('Price not found for product:', product.Name || product.Id)
-      return 'N/A'
+      // Calculate price based on charging type
+      const charging = product.Charging
+      let calculation = ''
+      let finalPrice = basePrice
+
+      switch (charging) {
+        case 'Once':
+          calculation = `${basePrice}€`
+          finalPrice = basePrice
+          break
+        case 'PerPerson':
+          calculation = `${basePrice}€ × 2`
+          finalPrice = basePrice * 2
+          break
+        case 'PerPersonPerTimeUnit':
+          calculation = `${basePrice}€ × 2 × ${this.numberOfNights}`
+          finalPrice = basePrice * 2 * this.numberOfNights
+          break
+        default:
+          calculation = `${basePrice}€`
+          finalPrice = basePrice
+      }
+
+      return {
+        calculation,
+        price: finalPrice
+      }
     },
 
     getProductDescription(product) {
@@ -116,6 +224,45 @@ export default {
         return 'Bien-être'
       } else {
         return 'Premium'
+      }
+    },
+
+    getChargingInfo(product) {
+      // Display charging information as is
+      const charging = product.Charging
+
+      if (!charging) return ''
+
+      return charging
+    },
+
+    async loadProducts() {
+      if (!this.serviceId) {
+        console.warn('OptionsSelector: No serviceId provided for loading products')
+        return
+      }
+
+      this.isLoadingProducts = true
+
+      try {
+        const response = await fetch('/intense_experience-api/products')
+        const data = await response.json()
+        if (data.status === 'success') {
+          // Filter products by selected service
+          const allProducts = data.products || []
+          const filteredProducts = allProducts.filter(product =>
+            product.ServiceId === this.serviceId
+          )
+
+          // Emit the loaded products
+          this.$emit('products-loaded', filteredProducts)
+        } else {
+          console.error('Failed to load products:', data.error)
+        }
+      } catch (error) {
+        console.error('Error loading products:', error)
+      } finally {
+        this.isLoadingProducts = false
       }
     }
   }
@@ -196,6 +343,13 @@ export default {
   color: #666;
 }
 
+.calculation {
+  font-size: 11px;
+  color: #666;
+  font-weight: normal;
+  margin-left: 4px;
+}
+
 .option-description {
   margin-bottom: 15px;
 }
@@ -221,6 +375,16 @@ export default {
   font-weight: 500;
 }
 
+.charging-badge {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
 .selection-indicator {
   color: #007bff;
   font-size: 18px;
@@ -230,6 +394,26 @@ export default {
   color: #28a745;
 }
 
+.options-loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.options-loading .spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #007bff;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
 
 /* Responsive */
 @media (max-width: 768px) {

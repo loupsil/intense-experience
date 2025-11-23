@@ -154,7 +154,10 @@
         <OptionsSelector
           :products="availableProducts"
           :selected-options="selectedOptions"
+          :service-id="selectedService?.Id"
+          :number-of-nights="numberOfNights"
           @options-updated="updateOptions"
+          @products-loaded="handleProductsLoaded"
         />
         <div class="booking-summary">
           <h3>Summary</h3>
@@ -173,7 +176,7 @@
             class="summary-item"
           >
             <span>{{ option.Names?.['fr-FR'] || option.Name }}</span>
-            <span>{{ getProductPrice(option) }}€</span>
+            <span>{{ option.calculatedPrice }}€ <span class="calculation" v-if="option.priceCalculation !== option.calculatedPrice + '€'">({{ option.priceCalculation }})</span></span>
           </div>
           <div class="summary-total">
             <strong>Total: {{ typeof pricing.total === 'number' ? (pricing.total + pricing.options) + '€' : pricing.total }}</strong>
@@ -314,6 +317,31 @@ export default {
       return this.customerInfo.firstName &&
              this.customerInfo.lastName &&
              this.customerInfo.email
+    },
+
+    numberOfNights() {
+      if (!this.selectedDates.start || !this.selectedDates.end) {
+        return 1
+      }
+
+      const start = new Date(this.selectedDates.start)
+      const end = new Date(this.selectedDates.end)
+      const diffTime = Math.abs(end - start)
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+      // For night stays, number of nights is typically diffDays - 1
+      // But according to user, PerPersonPerTimeUnit should be for nights, so return diffDays
+      return diffDays
+    }
+  },
+  watch: {
+    currentStep: {
+      handler(newStep) {
+        // Ensure products are loaded when accessing step 5 directly
+        if (newStep === 5 && this.selectedService && this.availableProducts.length === 0) {
+          // The OptionsSelector will handle loading products itself
+        }
+      }
     }
   },
   async mounted() {
@@ -695,33 +723,9 @@ export default {
       }
     },
 
-    async loadProducts() {
-      try {
-        const response = await fetch('/intense_experience-api/products')
-        const data = await response.json()
-        if (data.status === 'success') {
-          // Filter products by selected service
-          const allProducts = data.products || []
-          this.availableProducts = allProducts.filter(product =>
-            product.ServiceId === this.selectedService.Id
-          )
-        }
-      } catch (error) {
-        console.error('Error loading products:', error)
-      }
-    },
-
-    updateOptions(options) {
+    updateOptions(options, totalPrice) {
       this.selectedOptions = options
-      this.calculateOptionsPricing()
-    },
-
-    calculateOptionsPricing() {
-      // Calculate options pricing only (suite pricing comes from SuiteSelector)
-      this.pricing.options = this.selectedOptions.reduce((sum, option) => {
-        const price = this.getProductPrice(option)
-        return sum + (typeof price === 'number' ? price : 0)
-      }, 0)
+      this.pricing.options = totalPrice || 0
     },
 
     async createReservation() {
@@ -775,20 +779,14 @@ export default {
           await this.loadSuites()
           // Skip suite selection if suite is preselected
           if (this.selectedSuite) {
-            this.loadProducts()
-            this.calculateOptionsPricing()
             this.currentStep = 5
           } else {
             this.currentStep = 4
           }
         } else {
-          this.loadProducts()
-          this.calculateOptionsPricing()
           this.currentStep = 5
         }
       } else if (this.currentStep === 4) {
-        this.loadProducts()
-        this.calculateOptionsPricing()
         this.currentStep = 5
       } else if (this.currentStep === 5) {
         await this.createReservation()
@@ -855,21 +853,7 @@ export default {
       return `${startDate} - ${endDate}`
     },
 
-    getProductPrice(product) {
-      // Extract price from product data (Mews API format)
-      if (product.Price && typeof product.Price.GrossValue === 'number') {
-        return product.Price.GrossValue
-      }
 
-      // Try pricing field as well
-      if (product.Pricing && product.Pricing.Value && typeof product.Pricing.Value.GrossValue === 'number') {
-        return product.Pricing.Value.GrossValue
-      }
-
-      // No price found - return error indicator
-      console.error('Price not found for product:', product.Name || product.Id)
-      return 'N/A'
-    },
 
     resetBooking() {
       // Reset the entire booking process
@@ -887,6 +871,11 @@ export default {
 
     toggleDebug() {
       this.debugMode = !this.debugMode
+    },
+
+    handleProductsLoaded(products) {
+      // Update available products when loaded by OptionsSelector
+      this.availableProducts = products
     }
   }
 }
@@ -1134,6 +1123,12 @@ h2 {
   padding-top: 15px;
   border-top: 2px solid #007bff;
   text-align: right;
+}
+
+.calculation {
+  font-size: 11px;
+  color: #666;
+  font-weight: normal;
 }
 
 .loading-overlay {
