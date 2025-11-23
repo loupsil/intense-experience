@@ -114,10 +114,11 @@
           <button class="prev-btn" @click="prevStep">Back</button>
           <button
             class="next-btn"
-            :disabled="loading"
+            :disabled="customerCreationLoading"
             @click="submitCustomerForm"
           >
-            {{ loading ? 'Creating profile...' : 'Continue' }}
+            <span v-if="customerCreationLoading" class="button-spinner"></span>
+            {{ customerCreationLoading ? 'Creating profile...' : 'Continue' }}
           </button>
         </div>
       </div>
@@ -131,6 +132,7 @@
           :service-type="getServiceType()"
           :start-date="selectedDates.start"
           :end-date="selectedDates.end"
+          :pricing="suitePricing"
           :preselected-suite="preselectedSuite"
           @suite-selected="selectSuite"
           @pricing-updated="updateSuitePricing"
@@ -328,12 +330,14 @@ export default {
       availableProducts: [],
       selectedOptions: [],
       suitePricing: {}, // Pricing data from SuiteSelector
+      suitePriceCalculation: '',
       pricing: { total: 0, options: 0 },
       customerInfo: {},
       customer: null,
       reservation: null,
       loading: false,
       loadingMessage: '',
+      customerCreationLoading: false,
       bookingType: 'day', // 'day' or 'night'
       debugMode: false // Debug mode toggle
     }
@@ -479,6 +483,7 @@ export default {
       this.bookingType = service.Id === JOURNEE_ID ? 'day' : 'night'
       // Clear selected options when service changes to prevent invalid selections
       this.selectedOptions = []
+      this.suitePriceCalculation = ''
 
       // Emit service selection event to parent
       const serviceType = service.Id === JOURNEE_ID ? 'journée' : 'nuitée'
@@ -500,9 +505,7 @@ export default {
     },
 
     async handleCustomerInfo(customerInfo) {
-      this.loading = true
-      this.loadingMessage = 'Création de votre profil client...'
-
+      this.customerCreationLoading = true
       try {
         const customerResponse = await fetch('/intense_experience-api/create-customer', {
           method: 'POST',
@@ -532,13 +535,17 @@ export default {
         this.customerInfo = customerInfo
         this.customer = customerData.customer
 
-        // Don't set loading to false here - let nextStep() handle it
+        // Proceed to next step
         await this.nextStep()
+
+        // Reset loading state
+        this.customerCreationLoading = false
 
       } catch (error) {
         console.error('Error in handleCustomerInfo:', error)
         alert(`Erreur lors de la création du profil client: ${error.message}`)
-        this.loading = false
+      } finally {
+        this.customerCreationLoading = false
       }
     },
 
@@ -554,6 +561,9 @@ export default {
     updatePricing(pricingData) {
       this.pricing.total = pricingData.total
       this.pricing.options = pricingData.options
+      if (Object.prototype.hasOwnProperty.call(pricingData, 'calculation')) {
+        this.suitePriceCalculation = pricingData.calculation || ''
+      }
     },
 
 
@@ -642,7 +652,7 @@ export default {
       if (this.$refs.suiteSelector) {
         return this.$refs.suiteSelector.getSuitePriceInfo()
       }
-      return { price: this.pricing.total, calculation: '' }
+      return { price: this.pricing.total, calculation: this.suitePriceCalculation }
     },
 
     getServiceDescription(serviceId) {
@@ -703,6 +713,7 @@ export default {
       this.selectedDates = { start: null, end: null }
       this.selectedOptions = []
       this.suitePricing = {}
+      this.suitePriceCalculation = ''
       this.customerInfo = { firstName: '', lastName: '', email: '', phone: '' }
       this.pricing = { total: 0, options: 0, breakdown: [] }
       this.reservation = null
@@ -925,6 +936,21 @@ h2 {
   background: #666;
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.button-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: button-spin 1s ease-in-out infinite;
+  margin-right: 8px;
+}
+
+@keyframes button-spin {
+  to { transform: rotate(360deg); }
 }
 
 .step-navigation {

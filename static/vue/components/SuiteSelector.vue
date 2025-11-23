@@ -25,7 +25,7 @@
             <span
               :class="suiteAvailability[suite.Id] ? 'available-badge' : 'unavailable-badge'"
             >
-              {{ suiteAvailability[suite.Id] ? 'Disponible' : 'Indisponible' }}
+              {{ suiteAvailability[suite.Id] ? 'Available' : 'Unavailable' }}
             </span>
           </div>
         </div>
@@ -63,17 +63,12 @@
 
         <div class="suite-footer">
           <div class="pricing-info">
-            <span class="price-label">À partir de</span>
             <span class="price-value">{{ getSuiteBasePrice(suite) }}€</span>
           </div>
+        </div>
 
-          <button
-            class="select-suite-btn"
-            :disabled="!suiteAvailability[suite.Id]"
-            @click.stop="selectSuite(suite)"
-          >
-            {{ selectedSuite?.Id === suite.Id ? 'Sélectionnée' : 'Sélectionner' }}
-          </button>
+        <div class="selection-indicator">
+          <i :class="selectedSuite?.Id === suite.Id ? 'fas fa-check-circle' : 'far fa-circle'"></i>
         </div>
       </div>
     </div>
@@ -118,6 +113,11 @@ export default {
       default: null
     }
   },
+  computed: {
+    bookingType() {
+      return this.serviceType === 'journée' ? 'day' : 'night'
+    }
+  },
   emits: [
     'suite-selected',
     'pricing-requested',
@@ -134,15 +134,24 @@ export default {
       suitePricing: {},
       suiteImages: {}, // Will now store arrays of images per suite
       currentImageIndex: {}, // Track current image index for each suite
-      pricing: { total: 0, options: 0 },
+      calculatedPricing: { total: 0, options: 0 },
+      suitePriceCalculation: '', // Cache the calculation string to prevent flicker
       loading: false,
-      isLoadingSuites: false
+      isLoadingSuites: false,
+      _isMounted: false
     }
   },
   watch: {
     serviceType: 'requestPricing',
     startDate: 'requestPricing',
     endDate: 'requestPricing',
+    pricing: {
+      handler(newPricing) {
+        this.updateSuitePricing(newPricing)
+      },
+      immediate: true,
+      deep: true
+    },
     preselectedSuite: {
       handler(newSuite) {
         this.selectedSuite = newSuite
@@ -151,18 +160,30 @@ export default {
     },
     service: {
       handler(newService) {
-        if (newService) {
+        if (newService && this._isMounted) {
           this.loadSuites()
         }
+      },
+      immediate: false
+    },
+    bookingType: {
+      handler() {
+        this.$nextTick(() => {
+          this.updateBackgroundColor()
+        })
       },
       immediate: true
     }
   },
   mounted() {
+    this._isMounted = true
     this.requestPricing()
     if (this.service) {
       this.loadSuites()
     }
+    this.$nextTick(() => {
+      this.updateBackgroundColor()
+    })
   },
   methods: {
     selectSuite(suite) {
@@ -402,17 +423,24 @@ export default {
           const actualHours = hours - 1
           const correctedTotal = actualHours * hourlyRate
 
-          this.pricing.total = correctedTotal
+          this.calculatedPricing.total = correctedTotal
+          this.suitePriceCalculation = `${hourlyRate}€ × ${actualHours}h`
         } else {
           // For nuitée, take the first price (daily rate) and multiply by number of nights
           const numberOfNights = this.calculateNumberOfNights()
-          this.pricing.total = suitePricing.Prices[0] * numberOfNights
+          this.calculatedPricing.total = suitePricing.Prices[0] * numberOfNights
+          this.suitePriceCalculation = `${suitePricing.Prices[0]}€ × ${numberOfNights} nuits`
         }
       } else {
         // No pricing data available
-        this.pricing.total = 'N/A'
+        this.calculatedPricing.total = 'N/A'
+        // Don't clear suitePriceCalculation here - keep the last known good calculation
       }
-      this.$emit('pricing-calculated', { total: this.pricing.total, options: this.pricing.options })
+      this.$emit('pricing-calculated', {
+        total: this.calculatedPricing.total,
+        options: this.calculatedPricing.options,
+        calculation: this.suitePriceCalculation
+      })
     },
 
     calculateNumberOfNights() {
@@ -455,36 +483,26 @@ export default {
       return images ? images.length : 0
     },
 
+    updateBackgroundColor() {
+      if (this.bookingType === 'night') {
+        this.$el.style.setProperty('--suite-card-background', '#161616')
+        this.$el.style.setProperty('--suite-card-text', '#ffffff')
+        this.$el.style.setProperty('--suite-badge-background', '#333')
+        this.$el.style.setProperty('--suite-selected-background', '#161616')
+        this.$el.style.setProperty('--suite-selected-box-shadow', '0px 0px 5px 5px rgb(255 255 255 / 30%)')
+      } else if (this.bookingType === 'day') {
+        this.$el.style.setProperty('--suite-card-background', '#E9E9DF')
+        this.$el.style.setProperty('--suite-card-text', '#333')
+        this.$el.style.setProperty('--suite-badge-background', '#f8f9fa')
+        this.$el.style.setProperty('--suite-selected-background', '#f8f9ff')
+        this.$el.style.setProperty('--suite-selected-box-shadow', 'none')
+      }
+    },
+
     getSuitePriceInfo() {
-      if (!this.selectedSuite || !this.suitePricing) {
-        return { price: this.pricing.total, calculation: '' }
-      }
-
-      const suitePricing = this.suitePricing[this.selectedSuite.Id]
-
-      if (!suitePricing || !suitePricing.Prices || suitePricing.Prices.length === 0) {
-        return { price: this.pricing.total, calculation: '' }
-      }
-
-      let calculation = ''
-      let finalPrice = this.pricing.total
-
-      if (this.serviceType === 'journée') {
-        // For day stays, show the hourly calculation
-        const hours = suitePricing.Prices.length
-        const actualHours = hours - 1
-        const hourlyRate = suitePricing.Prices[0]
-        calculation = `${hourlyRate}€ × ${actualHours}h`
-      } else {
-        // For night stays, show daily rate × nights
-        const dailyRate = suitePricing.Prices[0]
-        const numberOfNights = this.calculateNumberOfNights()
-        calculation = `${dailyRate}€ × ${numberOfNights} nuits`
-      }
-
       return {
-        price: finalPrice,
-        calculation
+        price: this.calculatedPricing.total,
+        calculation: this.suitePriceCalculation
       }
     }
   }
@@ -505,12 +523,16 @@ export default {
 }
 
 .suite-card {
-  border: 2px solid #e0e0e0;
   border-radius: 12px;
-  overflow: hidden;
-  transition: all 0.3s ease;
+  padding: 20px;
   cursor: pointer;
-  background: #fff;
+  transition: all 0.3s ease;
+  background: var(--suite-card-background, #fff);
+  color: var(--suite-card-text, #333);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border:none;
+  position: relative;
+  padding-bottom: 60px;
 }
 
 .suite-card:hover:not(.unavailable) {
@@ -530,21 +552,20 @@ export default {
 
 .suite-card.selected {
   border-color: #007bff;
-  box-shadow: 0 0 0 3px rgba(0,123,255,0.25);
+  background: var(--suite-selected-background, #f8f9ff);
+  box-shadow: var(--suite-selected-box-shadow, 0 0 0 3px rgba(0,123,255,0.25));
 }
 
 .suite-header {
-  padding: 20px;
-  background: #f8f9fa;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  margin-bottom: 15px;
 }
 
 .suite-header h3 {
   margin: 0;
-  color: #333;
-  font-size: 18px;
+  color: var(--suite-card-text, #333);
 }
 
 .availability-badge span {
@@ -567,12 +588,14 @@ export default {
 
 .suite-image {
   height: 150px;
-  background: #f8f9fa;
+  background: var(--suite-badge-background, #f8f9fa);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   position: relative;
+  margin-top: 15px;
+  margin-bottom: 15px;
 }
 
 .suite-image-container {
@@ -622,12 +645,8 @@ export default {
   font-size: 48px;
 }
 
-.suite-details {
-  padding: 20px;
-}
-
 .suite-description {
-  color: #666;
+  color: var(--suite-card-text, #333);
   margin-bottom: 15px;
   line-height: 1.5;
 }
@@ -652,50 +671,21 @@ export default {
 }
 
 .suite-footer {
-  padding: 20px;
-  background: #f8f9fa;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  position: absolute;
+  bottom: 15px;
+  left: 15px;
 }
 
 .pricing-info {
   display: flex;
   flex-direction: column;
-}
-
-.price-label {
-  font-size: 12px;
-  color: #666;
-  text-transform: uppercase;
+  text-align: center;
 }
 
 .price-value {
   font-size: 20px;
   font-weight: bold;
-  color: #333;
-}
-
-.select-suite-btn {
-  background: #c9a961;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: background 0.3s ease;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.suite-card.unavailable .select-suite-btn {
-  background: #dc3545;
-  cursor: not-allowed;
-}
-
-.select-suite-btn:hover:not(:disabled) {
-  background: #b89851;
+  color: var(--suite-card-text, #333);
 }
 
 .selection-summary {
@@ -736,6 +726,18 @@ export default {
   font-weight: 500;
 }
 
+.selection-indicator {
+  color: var(--suite-card-text, #333);
+  font-size: 18px;
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+}
+
+.suite-card.selected .selection-indicator {
+  color: #b89851;
+}
+
 .suites-loading {
   text-align: center;
   padding: 60px 20px;
@@ -770,8 +772,6 @@ export default {
   }
 
   .suite-footer {
-    flex-direction: column;
-    gap: 15px;
     text-align: center;
   }
 
