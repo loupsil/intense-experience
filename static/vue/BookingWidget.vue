@@ -379,15 +379,6 @@ export default {
         }
       }
     },
-    selectedSuite: {
-      handler(newSuite, oldSuite) {
-        // Reset pricing when suite changes to avoid showing pricing for wrong suite
-        if (newSuite !== oldSuite) {
-          console.log('BookingWidget: Suite changed, resetting suitePricing')
-          this.suitePricing = {}
-        }
-      }
-    }
   },
   async mounted() {
     await this.loadServices()
