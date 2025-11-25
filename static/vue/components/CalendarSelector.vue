@@ -106,8 +106,8 @@
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': hasAnyNightSlotAvailability(date),
-                      'unavailable': !hasAnyNightSlotAvailability(date),
+                      'available': getNightCellAvailabilityClass(date),
+                      'unavailable': getNightCellUnavailableClass(date),
                       'other-suite-available': shouldShowOtherSuiteAnyAvailability(date),
                       'other-suite-morning': shouldShowOtherSuiteMorningAvailability(date),
                       'other-suite-night': shouldShowOtherSuiteNightAvailability(date),
@@ -143,8 +143,8 @@
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': hasAnyNightSlotAvailability(date),
-                      'unavailable': !hasAnyNightSlotAvailability(date),
+                      'available': getNightCellAvailabilityClass(date),
+                      'unavailable': getNightCellUnavailableClass(date),
                       'other-suite-available': shouldShowOtherSuiteAnyAvailability(date),
                       'other-suite-morning': shouldShowOtherSuiteMorningAvailability(date),
                       'other-suite-night': shouldShowOtherSuiteNightAvailability(date),
@@ -585,7 +585,29 @@ export default {
       if (this.selectedBookingType !== 'night') {
         return this.isDateAvailable(date)
       }
-      return this.getNightAvailabilityFlags(date).any
+      // For night bookings, check if ANY suite has availability (overall availability)
+      // not just the selected suite - this allows selection of golden cells
+      const { overall } = this.getNightAvailabilityData(date)
+      const overallFlags = this.getNightFlagsFromAvailability(overall)
+      return overallFlags.any
+    },
+
+    getNightCellAvailabilityClass(date) {
+      if (this.selectedBookingType !== 'night') {
+        return this.isDateAvailable(date)
+      }
+      // For color coding, use suite-specific availability (shows golden cells as unavailable)
+      const availabilityFlags = this.getNightAvailabilityFlags(date)
+      return availabilityFlags.any
+    },
+
+    getNightCellUnavailableClass(date) {
+      if (this.selectedBookingType !== 'night') {
+        return !this.isDateAvailable(date)
+      }
+      // For color coding, use suite-specific availability (shows golden cells as unavailable)
+      const availabilityFlags = this.getNightAvailabilityFlags(date)
+      return !availabilityFlags.any
     },
 
     isDateRangeFullyAvailable(startDate, endDate) {
