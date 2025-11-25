@@ -93,9 +93,12 @@
           :service="selectedService"
           :booking-type="bookingType"
           :selected-suite="selectedSuite"
+          :suite-for-booking="suiteForBooking"
           :suite-pricing="suitePricing"
           @date-selected="handleDateSelection"
           @dates-confirmed="nextStep"
+          @suite-deselected="handleSuiteDeselected"
+          @suite-reselected="handleSuiteReselected"
         />
         <div class="step-navigation">
           <button class="prev-btn" @click="prevStep">Back</button>
@@ -145,7 +148,7 @@
           <button class="prev-btn" @click="prevStep">Back</button>
           <button
             class="next-btn"
-            :disabled="!selectedSuite"
+            :disabled="!hasActiveSuiteSelection"
             @click="nextStep"
           >
             Continue
@@ -360,7 +363,8 @@ export default {
       reservationCreationLoading: false,
       reservationError: null,
       bookingType: 'day', // 'day' or 'night'
-      debugMode: false // Debug mode toggle
+      debugMode: false, // Debug mode toggle
+      suiteClearedForGoldenCell: false
     }
   },
   computed: {
@@ -387,6 +391,14 @@ export default {
       // For night stays, number of nights is typically diffDays - 1
       // But according to user, PerPersonPerTimeUnit should be for nights, so return diffDays
       return diffDays
+    },
+
+    hasActiveSuiteSelection() {
+      return Boolean(this.selectedSuite && !this.suiteClearedForGoldenCell)
+    },
+
+    suiteForBooking() {
+      return this.hasActiveSuiteSelection ? this.selectedSuite : null
     }
   },
   watch: {
@@ -448,6 +460,7 @@ export default {
           const suite = data.suites.find(s => s.Id === this.preselectedSuiteId)
           if (suite) {
             this.selectedSuite = suite
+            this.suiteClearedForGoldenCell = false
             console.log('Preselected suite found:', suite.Names['fr-FR'] || suite.Name)
           } else {
             console.warn('Preselected suite ID not found:', this.preselectedSuiteId)
@@ -469,7 +482,8 @@ export default {
         currentSuitePricing: this.suitePricing
       })
 
-      if (!this.selectedSuite || !startDate || !endDate) {
+      const targetSuite = this.suiteForBooking
+      if (!targetSuite || !startDate || !endDate) {
         console.log('BookingWidget: Missing required data for pricing calculation')
         return
       }
@@ -528,7 +542,7 @@ export default {
           console.log('BookingWidget: Set suitePricing to:', this.suitePricing)
 
           // Calculate suite pricing using shared logic
-          const pricingResult = this.calculateSuitePricingFromData(pricing, startDate, endDate)
+          const pricingResult = this.calculateSuitePricingFromData(pricing, startDate, endDate, targetSuite)
           console.log('BookingWidget: Local pricing calculation result:', pricingResult)
           this.pricing.total = pricingResult.total
           this.suitePriceCalculation = pricingResult.calculation
@@ -690,17 +704,42 @@ export default {
       console.log('BookingWidget updated selectedDates to:', this.selectedDates)
 
       // Reset suitePricing when dates change to avoid showing stale pricing
-      if (this.selectedSuite) {
+      if (this.hasActiveSuiteSelection) {
         console.log('BookingWidget: Resetting suitePricing for new date selection')
         this.suitePricing = {}
       }
 
       // Calculate pricing for preselected suite when dates are selected
-      if (this.selectedSuite && dates.start && dates.end) {
+      if (this.hasActiveSuiteSelection && dates.start && dates.end) {
         console.log('BookingWidget: Calling calculatePreselectedSuitePricing')
         await this.calculatePreselectedSuitePricing(dates.start, dates.end)
       } else {
         console.log('BookingWidget: Not calling calculatePreselectedSuitePricing - missing data')
+      }
+    },
+
+    handleSuiteDeselected() {
+      // Called when a partially available date is selected (selected suite not available, but other suites are)
+      // Clear the suite selection so the user will be prompted to select a suite
+      console.log('BookingWidget: Suite deselected due to partial availability - clearing selectedSuite')
+      if (!this.selectedSuite) {
+        return
+      }
+      this.suiteClearedForGoldenCell = true
+      this.suitePricing = {}
+      this.suitePriceCalculation = ''
+      this.pricing.total = 0
+    },
+
+    handleSuiteReselected() {
+      // Called when a fully available date is selected after previously clearing suite selection
+      // Reset the suite selection so pricing can be shown again
+      console.log('BookingWidget: Suite reselected due to full availability - resetting suite selection')
+      const wasCleared = this.suiteClearedForGoldenCell
+      this.suiteClearedForGoldenCell = false
+      // Recalculate pricing since we now have an active suite selection
+      if (wasCleared && this.selectedDates.start && this.selectedDates.end) {
+        this.calculatePreselectedSuitePricing(this.selectedDates.start, this.selectedDates.end)
       }
     },
 
@@ -758,6 +797,7 @@ export default {
 
     selectSuite(suite) {
       this.selectedSuite = suite
+      this.suiteClearedForGoldenCell = false
     },
 
     updateSuitePricing(pricing) {
@@ -786,7 +826,7 @@ export default {
         const reservationPayload = {
           service_id: this.selectedService.Id,
           customer_id: this.customer.Id,
-          suite_id: this.selectedSuite.Id,
+          suite_id: this.suiteForBooking?.Id,
           rate_id: this.getDefaultRateForService(),
           start_date: this.selectedDates.start,
           end_date: this.selectedDates.end,
@@ -832,13 +872,8 @@ export default {
       } else if (this.currentStep === 2) {
         this.currentStep = 3
       } else if (this.currentStep === 3) {
-        if (this.accessPoint === 'general') {
-          // Skip suite selection if suite is preselected
-          if (this.selectedSuite) {
-            this.currentStep = 5
-          } else {
-            this.currentStep = 4
-          }
+        if (!this.hasActiveSuiteSelection) {
+          this.currentStep = 4
         } else {
           this.currentStep = 5
         }
@@ -926,6 +961,7 @@ export default {
       this.currentStep = 1
       this.selectedService = null
       this.selectedSuite = null
+      this.suiteClearedForGoldenCell = false
       this.selectedDates = { start: null, end: null }
       this.selectedOptions = []
       this.suitePricing = {}

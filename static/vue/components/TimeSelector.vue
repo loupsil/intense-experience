@@ -10,6 +10,11 @@
       <div v-else-if="!canBook" class="pricing-details pricing-details-italic">Select dates & times</div>
       <div v-else class="pricing-details">Pricing unavailable</div>
     </div>
+    <!-- Message when no suite is selected -->
+    <div v-else class="pricing-display no-suite-message">
+      <div class="pricing-header">SUITE</div>
+      <div class="pricing-details pricing-details-italic">You'll choose a suite in the next steps</div>
+    </div>
 
     <!-- Day Booking: Time Selection -->
     <div v-if="bookingType === 'day'" class="time-selection">

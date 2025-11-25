@@ -174,11 +174,27 @@
           :selected-dates="selectedBookingType === 'night' ? selectedDates : { start: null, end: null }"
           :date-availability="getDateAvailability(selectedDates.start)"
           :service="service"
-          :selected-suite="selectedSuite"
+        :selected-suite="suiteForBooking"
           :suite-pricing="suitePricing"
           @time-selected="handleTimeSelection"
           @book-suite="confirmSelection"
         />
+      </div>
+    </div>
+
+    <!-- Calendar Legend -->
+    <div class="calendar-legend">
+      <div class="legend-item">
+        <span class="legend-color legend-available"></span>
+        <span class="legend-label">Available</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-color legend-unavailable"></span>
+        <span class="legend-label">Unavailable</span>
+      </div>
+      <div v-if="selectedSuite" class="legend-item">
+        <span class="legend-color legend-other-suites"></span>
+        <span class="legend-label">Other suites available</span>
       </div>
     </div>
 
@@ -210,6 +226,10 @@ export default {
     suitePricing: {
       type: Object,
       default: () => ({})
+    },
+    suiteForBooking: {
+      type: Object,
+      default: null
     }
   },
   data() {
@@ -606,6 +626,40 @@ export default {
       return true
     },
 
+    isDateRangePartiallyAvailable(startDate, endDate) {
+      // Check if the range contains any dates where selected suite is unavailable but others are available
+      const currentDate = new Date(startDate)
+      const end = new Date(endDate)
+
+      while (currentDate <= end) {
+        // Check if this date has any availability but the selected suite slot is not available
+        const hasAnyAvailability = this.hasAnyNightSlotAvailability(currentDate)
+        const availabilityFlags = this.getNightAvailabilityFlags(currentDate)
+
+        const isStartDate = currentDate.toDateString() === startDate.toDateString()
+        const isEndDate = currentDate.toDateString() === endDate.toDateString()
+
+        let slotAvailable = false
+        if (isStartDate) {
+          slotAvailable = availabilityFlags.night
+        } else if (isEndDate) {
+          slotAvailable = availabilityFlags.morning
+        } else {
+          slotAvailable = availabilityFlags.morning && availabilityFlags.night
+        }
+
+        // If date has any availability but the specific slot for selected suite is not available
+        if (hasAnyAvailability && !slotAvailable) {
+          return true
+        }
+
+        // Move to next day
+        currentDate.setDate(currentDate.getDate() + 1)
+      }
+
+      return false
+    },
+
     isDatePartiallyAvailable(date) {
       // Only applies to day bookings with a specific suite selected
       if (this.selectedBookingType !== 'day' || !this.selectedSuite) {
@@ -652,6 +706,17 @@ export default {
         }
         // Note: Don't set default times here - TimeSelector will handle time selection
 
+        // Check if this is a partially available date (selected suite unavailable, but other suites available)
+        // If so, we need to clear the suite selection
+        if (this.isDatePartiallyAvailable(date)) {
+          console.log('CalendarSelector: Partially available date selected, clearing suite selection')
+          this.$emit('suite-deselected')
+        } else if (this.isDateAvailable(date)) {
+          // If this is a fully available date and we previously cleared suite selection, reset it
+          console.log('CalendarSelector: Fully available date selected, resetting suite selection')
+          this.$emit('suite-reselected')
+        }
+
         // Ensure availability data is loaded for this date (normalize to UTC midnight)
         const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
         const dateStr = utcDate.toISOString()
@@ -674,10 +739,17 @@ export default {
         isSelectingStart = true
       }
 
+      // For night bookings with a selected suite, allow selection of dates with any availability
+      // (including golden cells where selected suite is unavailable but others are available)
+      const hasAnyAvailability = this.hasAnyNightSlotAvailability(date)
+      if (!hasAnyAvailability) return
+
       const availabilityFlags = this.getNightAvailabilityFlags(date)
       const slotAvailable = isSelectingStart ? availabilityFlags.night : availabilityFlags.morning
 
-      if (!slotAvailable) return
+      // If the specific slot for selected suite is not available, but other slots/suites are,
+      // allow selection but mark that suite selection needs to be cleared
+      const needsSuiteClearing = !slotAvailable && hasAnyAvailability
 
       if (isSelectingStart) {
         // Selecting start date
@@ -685,6 +757,16 @@ export default {
         this.selectedDates.start.setHours(this.nightCheckInHour, 0, 0, 0)
         this.selectedDates.end = null
         this.selectionMode = 'end'
+
+        // If this date needs suite clearing (golden cell), emit the event
+        if (needsSuiteClearing) {
+          console.log('CalendarSelector: Golden start date selected for night booking, clearing suite selection')
+          this.$emit('suite-deselected')
+        } else if (slotAvailable) {
+          // If this date is fully available for the selected suite, reset suite selection if it was previously cleared
+          console.log('CalendarSelector: Fully available start date selected for night booking, resetting suite selection')
+          this.$emit('suite-reselected')
+        }
       } else {
         // Selecting end date - check if all dates in range are available
         if (selectedDate <= this.selectedDates.start) {
@@ -693,9 +775,22 @@ export default {
           this.selectedDates.start.setHours(this.nightCheckInHour, 0, 0, 0)
           this.selectedDates.end = null
           this.selectionMode = 'end'
+
+          // If this reset start date needs suite clearing (golden cell), emit the event
+          if (needsSuiteClearing) {
+            console.log('CalendarSelector: Golden reset start date selected for night booking, clearing suite selection')
+            this.$emit('suite-deselected')
+          } else if (slotAvailable) {
+            // If this reset start date is fully available for the selected suite, reset suite selection if it was previously cleared
+            console.log('CalendarSelector: Fully available reset start date selected for night booking, resetting suite selection')
+            this.$emit('suite-reselected')
+          }
         } else {
-          // Check if all dates between start and selected date are available
-          if (!this.isDateRangeFullyAvailable(this.selectedDates.start, selectedDate)) {
+          // For night bookings with suite selection, allow ranges that include golden dates
+          // but clear suite selection if any date in range needs it
+          const rangeNeedsSuiteClearing = this.isDateRangePartiallyAvailable(this.selectedDates.start, selectedDate)
+
+          if (!this.isDateRangeFullyAvailable(this.selectedDates.start, selectedDate) && !rangeNeedsSuiteClearing) {
             this.resetSelection() // Reset selection when invalid range is selected
             return
           }
@@ -704,6 +799,16 @@ export default {
           this.selectedDates.end = new Date(selectedDate)
           this.selectedDates.end.setHours(this.nightCheckOutHour, 0, 0, 0)
           this.selectionMode = 'start'
+
+          // If this date or range needs suite clearing (includes golden cells), emit the event
+          if (needsSuiteClearing || rangeNeedsSuiteClearing) {
+            console.log('CalendarSelector: Golden end date or range selected for night booking, clearing suite selection')
+            this.$emit('suite-deselected')
+          } else {
+            // If the end date and range are fully available for the selected suite, reset suite selection if it was previously cleared
+            console.log('CalendarSelector: Fully available end date and range selected for night booking, resetting suite selection')
+            this.$emit('suite-reselected')
+          }
 
           // Emit date selection when both dates are selected for pricing calculation
           console.log('CalendarSelector emitting preliminary date-selected for night booking')
@@ -1117,13 +1222,8 @@ export default {
   border: none;
 }
 
-.calendar-cell:hover:not(.past):not(.unavailable):not(.partially-available) {
+.calendar-cell:hover:not(.past):not(.unavailable) {
   background: #e9ecef;
-  transform: scale(1.1);
-}
-
-.calendar-cell.partially-available:hover:not(.past) {
-  background: #9a7751; /* Darker tan on hover */
   transform: scale(1.1);
 }
 
@@ -1155,10 +1255,12 @@ export default {
 
 .night-booking .calendar-cell.unavailable.other-suite-morning:not(.other-suite-night) {
   background: linear-gradient(to bottom right, #AD8E62 0%, #AD8E62 50%, #B33D43 50%, #B33D43 100%);
+  cursor: pointer; /* Ensure night booking golden cells are clickable */
 }
 
 .night-booking .calendar-cell.unavailable.other-suite-night:not(.other-suite-morning) {
   background: linear-gradient(to bottom right, #B33D43 0%, #B33D43 50%, #AD8E62 50%, #AD8E62 100%);
+  cursor: pointer; /* Ensure night booking golden cells are clickable */
 }
 
 
@@ -1204,6 +1306,7 @@ export default {
   background: #AD8E62; /* Tan/beige background for suite-specific unavailability */
   color: white; /* White text */
   border-color: #AD8E62; /* Tan/beige border */
+  cursor: pointer; /* Ensure golden cells are clickable */
 }
 
 .calendar-cell.unavailable {
@@ -1215,6 +1318,7 @@ export default {
   background: #AD8E62;
   border-color: #AD8E62;
   color: white;
+  cursor: pointer; /* Ensure night booking golden cells are clickable */
 }
 
 .calendar-cell.unavailable .date-number {
@@ -1272,6 +1376,45 @@ export default {
 .selection-summary p {
   margin: 8px 0;
   color: #666;
+}
+
+/* Calendar Legend */
+.calendar-legend {
+  display: flex;
+  justify-content: flex-start;
+  gap: 24px;
+  margin-top: 20px;
+  padding: 12px 0;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-color {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.legend-available {
+  background: #219672;
+}
+
+.legend-unavailable {
+  background: #B33D43;
+}
+
+.legend-other-suites {
+  background: #AD8E62;
+}
+
+.legend-label {
+  font-size: 13px;
+  color: #555;
 }
 
 .calendar-footer {
@@ -1361,6 +1504,15 @@ export default {
 
   .legend {
     justify-content: center;
+  }
+
+  .calendar-legend {
+    flex-wrap: wrap;
+    gap: 12px 20px;
+  }
+
+  .legend-label {
+    font-size: 12px;
   }
 
   /* Responsive calendar */
