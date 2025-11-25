@@ -756,7 +756,7 @@ export default {
       const days = []
 
       // Add empty cells for days before the first day of the month
-      for (let i = 0; i < startDayOfWeek; i++) {
+      for (let i = startDayOfWeek - 1; i >= 0; i--) {
         const prevMonth = new Date(year, monthIndex, -i)
         days.push(new Date(prevMonth))
       }
