@@ -189,7 +189,19 @@
         <!-- Step navigation - shown when sidebar is not visible (mobile) -->
         <div v-if="!showSidebar" class="step-navigation">
           <button class="prev-btn" @click="prevStep">Back</button>
-          <button class="next-btn" @click="nextStep">Continue</button>
+          <button
+            class="next-btn"
+            :disabled="reservationCreationLoading"
+            @click="nextStep"
+          >
+            <span v-if="reservationCreationLoading" class="button-spinner"></span>
+            {{ reservationCreationLoading ? '' : 'Continue' }}
+          </button>
+        </div>
+        <!-- Reservation error message - mobile -->
+        <div v-if="!showSidebar && reservationError" class="reservation-error">
+          <i class="fas fa-exclamation-triangle"></i>
+          <span>{{ reservationError }}</span>
         </div>
       </div>
 
@@ -251,11 +263,6 @@
         />
       </div>
 
-      <!-- Loading overlay -->
-      <div v-if="loading" class="loading-overlay">
-        <div class="spinner"></div>
-        <p>{{ loadingMessage }}</p>
-      </div>
     </div>
 
     <!-- Booking Summary - Desktop Right Side -->
@@ -281,7 +288,19 @@
       </div>
       <div class="sidebar-navigation">
         <button class="prev-btn" @click="prevStep">Back</button>
-        <button class="next-btn" @click="nextStep">Continue</button>
+        <button
+          class="next-btn"
+          :disabled="reservationCreationLoading"
+          @click="nextStep"
+        >
+          <span v-if="reservationCreationLoading" class="button-spinner"></span>
+          {{ reservationCreationLoading ? '' : 'Continue' }}
+        </button>
+      </div>
+      <!-- Reservation error message - desktop sidebar -->
+      <div v-if="reservationError" class="reservation-error">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span>{{ reservationError }}</span>
       </div>
     </div>
 
@@ -337,9 +356,9 @@ export default {
       customerInfo: {},
       customer: null,
       reservation: null,
-      loading: false,
-      loadingMessage: '',
       customerCreationLoading: false,
+      reservationCreationLoading: false,
+      reservationError: null,
       bookingType: 'day', // 'day' or 'night'
       debugMode: false // Debug mode toggle
     }
@@ -760,8 +779,8 @@ export default {
     },
 
     async createReservation() {
-      this.loading = true
-      this.loadingMessage = 'Création de votre réservation...'
+      this.reservationCreationLoading = true
+      this.reservationError = null
 
       try {
         const reservationPayload = {
@@ -785,7 +804,9 @@ export default {
 
         if (reservationData.status !== 'success') {
           console.error('Failed to create reservation:', reservationData.error)
-          throw new Error('Failed to create reservation')
+          // Use the backend error message if available
+          const backendError = reservationData.error || 'Erreur inconnue'
+          throw new Error(backendError)
         }
 
         this.reservation = reservationData.reservation
@@ -794,9 +815,14 @@ export default {
 
       } catch (error) {
         console.error('Error creating reservation:', error)
-        alert('Erreur lors de la création de la réservation. Veuillez réessayer.')
+        // Display detailed error only in debug mode, generic message otherwise
+        if (this.debugMode) {
+          this.reservationError = `Erreur lors de la création de la réservation: ${error.message}`
+        } else {
+          this.reservationError = 'Erreur lors de la création de la réservation. Veuillez réessayer.'
+        }
       } finally {
-        this.loading = false
+        this.reservationCreationLoading = false
       }
     },
 
@@ -820,7 +846,10 @@ export default {
         this.currentStep = 5
       } else if (this.currentStep === 5) {
         await this.createReservation()
-        this.currentStep = 6
+        // Only advance to step 6 if reservation was created successfully (no error)
+        if (!this.reservationError) {
+          this.currentStep = 6
+        }
       } else if (this.currentStep === 6) {
         // Go to payment step
         this.currentStep = 7
@@ -904,6 +933,7 @@ export default {
       this.customerInfo = { firstName: '', lastName: '', email: '', phone: '' }
       this.pricing = { total: 0, options: 0, breakdown: [] }
       this.reservation = null
+      this.reservationError = null
       this.accessPoint = 'general'
     },
 
@@ -1079,6 +1109,21 @@ h2 {
   display: block;
 }
 
+.reservation-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #dc3545;
+  font-size: 14px;
+  margin-top: 10px;
+  text-align: left;
+}
+
+.reservation-error i {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
 .service-empty i {
   font-size: 48px;
   margin-bottom: 20px;
@@ -1183,54 +1228,35 @@ h2 {
   font-weight: normal;
 }
 
-.loading-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255,255,255,0.9);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-
-.loading-overlay p {
-  color: #666;
-  font-size: 16px;
-}
 
 /* Confirmation page styles */
 .confirmation-message {
   text-align: center;
-  padding: 40px 20px;
+  padding: 20px 20px;
 }
 
 .confirmation-message .fa-check-circle {
-  font-size: 80px;
-  color: #28a745;
-  margin-bottom: 20px;
+  font-size: 60px;
+  color: #c9a961;
+  margin-bottom: 12px;
 }
 
 .confirmation-message h2 {
-  color: #28a745;
-  margin-bottom: 15px;
+  color: var(--heading-text-color, #333);
+  margin-bottom: 8px;
 }
 
 .confirmation-message > p {
   color: #666;
-  font-size: 18px;
-  margin-bottom: 30px;
+  font-size: 16px;
+  margin-bottom: 15px;
 }
 
 .reservation-details {
   background: var(--booking-section-background, #f8f9fa);
   border-radius: 8px;
-  padding: 25px;
-  margin: 30px auto;
+  padding: 18px;
+  margin: 15px auto;
   max-width: 500px;
   text-align: left;
   transition: background-color 0.5s ease;
@@ -1238,16 +1264,16 @@ h2 {
 
 .reservation-details h3 {
   color: var(--heading-text-color, #333);
-  margin-bottom: 20px;
+  margin-bottom: 12px;
   text-align: center;
-  font-size: 20px;
+  font-size: 18px;
   transition: color 0.5s ease;
 }
 
 .detail-item {
   display: flex;
   justify-content: space-between;
-  padding: 12px 0;
+  padding: 8px 0;
   border-bottom: 1px solid #e0e0e0;
 }
 
@@ -1261,47 +1287,47 @@ h2 {
 }
 
 .detail-item.total {
-  margin-top: 15px;
-  padding-top: 20px;
-  border-top: 2px solid #007bff;
-  font-size: 18px;
-  color: #007bff;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 2px solid #c9a961;
+  font-size: 16px;
+  color: var(--heading-text-color, #333);
 }
 
 .payment-choice {
-  margin-top: 30px;
+  margin-top: 18px;
   text-align: center;
 }
 
 .payment-choice p {
   color: #666;
-  margin-bottom: 20px;
-  font-size: 16px;
+  margin-bottom: 12px;
+  font-size: 15px;
 }
 
 .choice-buttons {
   display: flex;
-  gap: 15px;
+  gap: 12px;
   justify-content: center;
 }
 
 .pay-now-btn, .home-btn {
-  padding: 12px 25px;
+  padding: 10px 22px;
   border-radius: 6px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
   border: none;
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .pay-now-btn {
-  background: #007bff;
+  background: #c9a961;
   color: white;
 }
 
 .pay-now-btn:hover {
-  background: #0056b3;
+  background: #b89851;
 }
 
 .home-btn {
@@ -1390,6 +1416,7 @@ h2 {
 
   .confirmation-message .fa-check-circle {
     font-size: 60px;
+    color: #c9a961;
   }
 
   .reservation-details {
