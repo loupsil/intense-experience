@@ -724,6 +724,11 @@ export default {
     },
 
     async selectDate(date) {
+      // Prevent selection of past dates
+      if (this.isDateInPast(date)) {
+        return
+      }
+
       if (this.selectedBookingType === 'day') {
         // For day bookings, select a single day
         this.selectedDates = {

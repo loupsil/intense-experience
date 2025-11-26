@@ -651,11 +651,6 @@ export default {
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Night booking pricing styles */
-.date-confirmation .pricing-details {
-  color: #999999 !important;
-}
-
 /* Book Button */
 .book-btn {
   background: #c9a961;
@@ -722,7 +717,6 @@ export default {
   gap: 4px;
   font-size: 24px;
   font-weight: 600;
-  color: #333;
 }
 
 .pricing-details-italic {
