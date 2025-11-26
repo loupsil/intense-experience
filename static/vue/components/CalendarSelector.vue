@@ -4,6 +4,7 @@
       <!-- Left Side: Calendar -->
       <div class="calendar-left">
         <div class="date-selection">
+          <!-- DAY BOOKING -->
           <div v-if="selectedBookingType === 'day'" class="day-booking">
             <!-- Two Month Calendar View -->
             <div class="two-month-calendar">
@@ -79,6 +80,7 @@
             </div>
           </div>
 
+          <!-- NIGHT BOOKING -->
           <div v-if="selectedBookingType === 'night'" class="night-booking">
             <!-- Two Month Calendar View -->
             <div class="two-month-calendar">
@@ -106,13 +108,13 @@
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': getNightCellAvailabilityClass(date),
-                      'unavailable': getNightCellUnavailableClass(date),
-                      'other-suite-available': shouldShowOtherSuiteAnyAvailability(date),
-                      'other-suite-morning': shouldShowOtherSuiteMorningAvailability(date),
-                      'other-suite-night': shouldShowOtherSuiteNightAvailability(date),
-                      'morning-availability': hasMorningSlotAvailability(date),
-                      'night-availability': hasNightSlotAvailability(date),
+                      'available': getNuiteeAvailabilityFlags(date).any, //any means morning OR night
+                      'unavailable': !getNuiteeAvailabilityFlags(date).any, //any means morning OR night
+                      'morning-availability': getNuiteeAvailabilityFlags(date).morning,
+                      'night-availability': getNuiteeAvailabilityFlags(date).night,
+                      'other-suite-available': getOtherSuitesAvailabilityFlags(date).any, //any means morning OR night
+                      'other-suite-morning': getOtherSuitesAvailabilityFlags(date).morning,
+                      'other-suite-night': getOtherSuitesAvailabilityFlags(date).night,
                       'past': isDateInPast(date),
                       'other-month': !isDateInCurrentMonth(date, currentMonth),
                       'diagonal-overlay': getDiagonalOverlayState(date, getDaysInMonth(currentMonth)).normal,
@@ -143,13 +145,13 @@
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': getNightCellAvailabilityClass(date),
-                      'unavailable': getNightCellUnavailableClass(date),
-                      'other-suite-available': shouldShowOtherSuiteAnyAvailability(date),
-                      'other-suite-morning': shouldShowOtherSuiteMorningAvailability(date),
-                      'other-suite-night': shouldShowOtherSuiteNightAvailability(date),
-                      'morning-availability': hasMorningSlotAvailability(date),
-                      'night-availability': hasNightSlotAvailability(date),
+                      'available': getNuiteeAvailabilityFlags(date).any,
+                      'unavailable': !getNuiteeAvailabilityFlags(date).any,
+                      'other-suite-available': getOtherSuitesAvailabilityFlags(date).any,
+                      'other-suite-morning': getOtherSuitesAvailabilityFlags(date).morning,
+                      'other-suite-night': getOtherSuitesAvailabilityFlags(date).night,
+                      'morning-availability': getNuiteeAvailabilityFlags(date).morning,
+                      'night-availability': getNuiteeAvailabilityFlags(date).night,
                       'past': isDateInPast(date),
                       'other-month': !isDateInCurrentMonth(date, nextMonthDate),
                       'diagonal-overlay': getDiagonalOverlayState(date, getDaysInMonth(nextMonthDate)).normal,
@@ -475,46 +477,47 @@ export default {
 
     isDateAvailable(date) {
       if (this.isDateInPast(date)) return false
-
       if (this.selectedBookingType === 'night') {
-        return this.getNightAvailabilityFlags(date).any
+        return this.getNuiteeAvailabilityFlags(date).any
       }
-
       // Use getDateAvailability which handles suite filtering
       const availability = this.getDateAvailability(date)
-
       if (!availability) {
         // If we don't have availability data yet, show as unavailable (will load)
         return false
       }
-
       // Date is available if at least one suite has at least one time slot free
       return availability.available
     },
 
-    shouldUseSuiteSpecificAvailability() {
-      return this.selectedBookingType === 'night' &&
-        !!this.selectedSuite &&
-        Object.keys(this.selectedSuiteAvailability || {}).length > 0
-    },
-
-    getNightAvailabilityData(date) {
-      const overall = this.getDateAvailability(date)
-      const suiteSpecific = this.shouldUseSuiteSpecificAvailability()
-        ? this.getDateAvailability(date, this.selectedSuiteAvailability)
-        : null
-
-      return {
-        overall,
-        suiteSpecific
+    // The function is used to get the availability of the date
+    // source can be null (looking at all suites) or this.selectedSuiteAvailability
+    //Example output : { available: true, available_morning: true, available_night: true, total_suites: 1, booked_suites: 0, available_suites: 1, booked_suite_ids: [] }
+    getDateAvailability(date, source = null) {
+      if (!date) return null
+      // Normalize to UTC midnight to match availability keys
+      const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+      const dateStr = utcDate.toISOString()
+      const availabilitySource = source || this.currentAvailability
+      if (!availabilitySource) {
+        return null
       }
+      const availability = availabilitySource[dateStr] || null
+      return availability
     },
 
-    getNightFlagsFromAvailability(availability) {
+    //Possible output: { morning: false, night: false, any: false }
+    //The function is used to determine the availability flags (morning, night, any) of the date
+    //Can work for a selected suite or all suites, depending on the data provided (cfr 'this.')
+    //If availability is provided, uses it directly; otherwise gets it from date
+    getNuiteeAvailabilityFlags(date, availability = null) {
+      if (availability === null) {
+        availability = this.getDateAvailability(date, !!this.selectedSuite ? this.selectedSuiteAvailability : null)
+      }
+
       if (!availability) {
         return { morning: false, night: false, any: false }
       }
-
       const hasMorningField = Object.prototype.hasOwnProperty.call(availability, 'available_morning')
       const hasNightField = Object.prototype.hasOwnProperty.call(availability, 'available_night')
       const fallback = !!availability.available
@@ -529,24 +532,23 @@ export default {
       }
     },
 
-    getNightAvailabilityFlags(date) {
-      const { suiteSpecific, overall } = this.getNightAvailabilityData(date)
-      const availability = suiteSpecific || overall
-      return this.getNightFlagsFromAvailability(availability)
-    },
 
-    getOtherSuitesNightFlags(date) {
-      if (!this.shouldUseSuiteSpecificAvailability()) {
+    //Returns the availability flags of the other suites for the date
+    //Possible output: { morning: false, night: false, any: false }
+    //The function is used to determine the availability flags (morning, night, any) of other suites
+    getOtherSuitesAvailabilityFlags(date) {
+      if (!this.selectedSuite) {
         return { morning: false, night: false, any: false }
       }
 
-      const { suiteSpecific, overall } = this.getNightAvailabilityData(date)
+      const overall = this.getDateAvailability(date)
+      const suiteSpecific = this.getDateAvailability(date, !!this.selectedSuite ? this.selectedSuiteAvailability : null)
       if (!suiteSpecific || !overall) {
         return { morning: false, night: false, any: false }
       }
 
-      const overallFlags = this.getNightFlagsFromAvailability(overall)
-      const suiteFlags = this.getNightFlagsFromAvailability(suiteSpecific)
+      const overallFlags = this.getNuiteeAvailabilityFlags(null, overall)
+      const suiteFlags = this.getNuiteeAvailabilityFlags(null, suiteSpecific)
 
       return {
         morning: overallFlags.morning && !suiteFlags.morning,
@@ -555,60 +557,6 @@ export default {
       }
     },
 
-    shouldShowOtherSuiteAnyAvailability(date) {
-      return this.getOtherSuitesNightFlags(date).any
-    },
-
-    shouldShowOtherSuiteMorningAvailability(date) {
-      return this.getOtherSuitesNightFlags(date).morning
-    },
-
-    shouldShowOtherSuiteNightAvailability(date) {
-      return this.getOtherSuitesNightFlags(date).night
-    },
-
-    hasMorningSlotAvailability(date) {
-      if (this.selectedBookingType !== 'night') {
-        return this.isDateAvailable(date)
-      }
-      return this.getNightAvailabilityFlags(date).morning
-    },
-
-    hasNightSlotAvailability(date) {
-      if (this.selectedBookingType !== 'night') {
-        return this.isDateAvailable(date)
-      }
-      return this.getNightAvailabilityFlags(date).night
-    },
-
-    hasAnyNightSlotAvailability(date) {
-      if (this.selectedBookingType !== 'night') {
-        return this.isDateAvailable(date)
-      }
-      // For night bookings, check if ANY suite has availability (overall availability)
-      // not just the selected suite - this allows selection of golden cells
-      const { overall } = this.getNightAvailabilityData(date)
-      const overallFlags = this.getNightFlagsFromAvailability(overall)
-      return overallFlags.any
-    },
-
-    getNightCellAvailabilityClass(date) {
-      if (this.selectedBookingType !== 'night') {
-        return this.isDateAvailable(date)
-      }
-      // For color coding, use suite-specific availability (shows golden cells as unavailable)
-      const availabilityFlags = this.getNightAvailabilityFlags(date)
-      return availabilityFlags.any
-    },
-
-    getNightCellUnavailableClass(date) {
-      if (this.selectedBookingType !== 'night') {
-        return !this.isDateAvailable(date)
-      }
-      // For color coding, use suite-specific availability (shows golden cells as unavailable)
-      const availabilityFlags = this.getNightAvailabilityFlags(date)
-      return !availabilityFlags.any
-    },
 
     isDateRangeFullyAvailable(startDate, endDate) {
       // Check all dates from start (inclusive) to end (inclusive) for availability
@@ -616,7 +564,7 @@ export default {
       const end = new Date(endDate)
 
       while (currentDate <= end) {
-        const availabilityFlags = this.getNightAvailabilityFlags(currentDate)
+        const availabilityFlags = this.getNuiteeAvailabilityFlags(currentDate)
 
         // Start date needs night availability for check-in
         // End date needs morning availability for check-out
@@ -648,15 +596,15 @@ export default {
       return true
     },
 
+    //Returns true if the range contains any dates where selected suite is unavailable but others are available
     isDateRangePartiallyAvailable(startDate, endDate) {
-      // Check if the range contains any dates where selected suite is unavailable but others are available
       const currentDate = new Date(startDate)
       const end = new Date(endDate)
 
       while (currentDate <= end) {
         // Check if this date has any availability but the selected suite slot is not available
-        const hasAnyAvailability = this.hasAnyNightSlotAvailability(currentDate)
-        const availabilityFlags = this.getNightAvailabilityFlags(currentDate)
+        const hasAnyAvailability = this.getNuiteeAvailabilityFlags(currentDate).any
+        const availabilityFlags = this.getNuiteeAvailabilityFlags(currentDate)
 
         const isStartDate = currentDate.toDateString() === startDate.toDateString()
         const isEndDate = currentDate.toDateString() === endDate.toDateString()
@@ -678,7 +626,7 @@ export default {
         // Move to next day
         currentDate.setDate(currentDate.getDate() + 1)
       }
-
+      // If no partially available 
       return false
     },
 
@@ -763,10 +711,10 @@ export default {
 
       // For night bookings with a selected suite, allow selection of dates with any availability
       // (including golden cells where selected suite is unavailable but others are available)
-      const hasAnyAvailability = this.hasAnyNightSlotAvailability(date)
+      const hasAnyAvailability = this.getNuiteeAvailabilityFlags(date).any
       if (!hasAnyAvailability) return
 
-      const availabilityFlags = this.getNightAvailabilityFlags(date)
+      const availabilityFlags = this.getNuiteeAvailabilityFlags(date)
       const slotAvailable = isSelectingStart ? availabilityFlags.night : availabilityFlags.morning
 
       // If the specific slot for selected suite is not available, but other slots/suites are,
@@ -1004,26 +952,9 @@ export default {
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
     },
 
-    getDateAvailability(date, source = null) {
-      if (!date) return null
-      // Normalize to UTC midnight to match availability keys
-      const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-      const dateStr = utcDate.toISOString()
-      const availabilitySource = source || this.currentAvailability
-      if (!availabilitySource) {
-        return null
-      }
-      const availability = availabilitySource[dateStr] || null
 
-      return availability
-    },
 
     getDiagonalOverlayState(date, datesArray) {
-      // Only apply for night bookings
-      if (this.selectedBookingType !== 'night') {
-        return { normal: false, reverse: false }
-      }
-
       // Only apply if current date is available
       if (!this.isDateAvailable(date)) {
         return { normal: false, reverse: false }
