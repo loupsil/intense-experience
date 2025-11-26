@@ -596,38 +596,50 @@ export default {
       return true
     },
 
-    //Returns true if the range contains any dates where selected suite is unavailable but others are available
     isDateRangePartiallyAvailable(startDate, endDate) {
-      const currentDate = new Date(startDate)
+      const start = new Date(startDate)
       const end = new Date(endDate)
+      let current = new Date(start)
+      let foundPartial = false
 
-      while (currentDate <= end) {
-        // Check if this date has any availability but the selected suite slot is not available
-        const hasAnyAvailability = this.getNuiteeAvailabilityFlags(currentDate).any
-        const availabilityFlags = this.getNuiteeAvailabilityFlags(currentDate)
+      while (current <= end) {
+        const suite = this.getNuiteeAvailabilityFlags(current)
+        const others = this.getOtherSuitesAvailabilityFlags(current)
 
-        const isStartDate = currentDate.toDateString() === startDate.toDateString()
-        const isEndDate = currentDate.toDateString() === endDate.toDateString()
+        const isStart = current.toDateString() === start.toDateString()
+        const isEnd = current.toDateString() === end.toDateString()
 
-        let slotAvailable = false
-        if (isStartDate) {
-          slotAvailable = availabilityFlags.night
-        } else if (isEndDate) {
-          slotAvailable = availabilityFlags.morning
+        let suiteAvailable
+        let othersAvailable
+
+        if (isStart) {
+          // Only night matters for the starting date
+          suiteAvailable = suite.night
+          othersAvailable = others.night
+        } else if (isEnd) {
+          // Only morning matters for the ending date
+          suiteAvailable = suite.morning
+          othersAvailable = others.morning
         } else {
-          slotAvailable = availabilityFlags.morning && availabilityFlags.night
+          // Middle days: either morning OR night makes the full day usable
+          suiteAvailable = suite.morning || suite.night
+          othersAvailable = others.morning || others.night
         }
 
-        // If date has any availability but the specific slot for selected suite is not available
-        if (hasAnyAvailability && !slotAvailable) {
-          return true
+        // Completely unavailable → return false
+        if (!suiteAvailable && !othersAvailable) {
+          return false
         }
 
-        // Move to next day
-        currentDate.setDate(currentDate.getDate() + 1)
+        // Partial availability
+        if (!suiteAvailable && othersAvailable) {
+          foundPartial = true
+        }
+
+        current.setDate(current.getDate() + 1)
       }
-      // If no partially available 
-      return false
+
+      return foundPartial
     },
 
     isDatePartiallyAvailable(date) {
@@ -700,94 +712,95 @@ export default {
     },
 
     selectNightDate(date) {
-      if (this.isDateInPast(date)) return
-
-      const selectedDate = new Date(date)
-      let isSelectingStart = this.selectionMode === 'start' || !this.selectedDates.start
-
-      if (!isSelectingStart && this.selectedDates.start && selectedDate <= this.selectedDates.start) {
-        isSelectingStart = true
+      console.log('SELECTION LOL selectNightDate called with date:', date)
+      
+      // Not allowing selection of past dates
+      if (this.isDateInPast(date)) {
+        console.log('SELECTION LOL Date is in past, returning')
+        return
       }
 
-      // For night bookings with a selected suite, allow selection of dates with any availability
-      // (including golden cells where selected suite is unavailable but others are available)
-      const hasAnyAvailability = this.getNuiteeAvailabilityFlags(date).any
-      if (!hasAnyAvailability) return
+      const selectedDate = new Date(date)
+      console.log('SELECTION LOL selectedDate:', selectedDate)
+      console.log('SELECTION LOL selectionMode:', this.selectionMode)
+      console.log('SELECTION LOL selectedDates.start:', this.selectedDates.start)
+      
+      let isSelectingStart = this.selectionMode === 'start' || !this.selectedDates.start
+      console.log('SELECTION LOL isSelectingStart (initial):', isSelectingStart)
+
+      // Resetting selection mode if selecting end date and start date is already selected
+      if (!isSelectingStart && this.selectedDates.start && selectedDate <= this.selectedDates.start) {
+        console.log('SELECTION LOL Resetting to start selection (selected date <= start date)')
+        isSelectingStart = true
+      }
+      console.log('SELECTION LOL isSelectingStart (final):', isSelectingStart)
 
       const availabilityFlags = this.getNuiteeAvailabilityFlags(date)
-      const slotAvailable = isSelectingStart ? availabilityFlags.night : availabilityFlags.morning
+      const otherSuitesAvailability = this.getOtherSuitesAvailabilityFlags(date)
+      console.log('SELECTION LOL availabilityFlags:', availabilityFlags)
+      console.log('SELECTION LOL otherSuitesAvailability:', otherSuitesAvailability)
 
-      // If the specific slot for selected suite is not available, but other slots/suites are,
-      // allow selection but mark that suite selection needs to be cleared
-      const needsSuiteClearing = !slotAvailable && hasAnyAvailability
+      const slotAvailable = isSelectingStart ? availabilityFlags.night : availabilityFlags.morning
+      console.log('SELECTION LOL slotAvailable:', slotAvailable)
+
+      //For the start, not allowing selection of evening that are not available for all suites
+      if (isSelectingStart && !availabilityFlags.night && !otherSuitesAvailability.night) {
+        console.log('SELECTION LOL Start date not available (no night availability), returning')
+        return
+      }
 
       if (isSelectingStart) {
         // Selecting start date
+        console.log('SELECTION LOL Selecting start date')
         this.selectedDates.start = new Date(selectedDate)
         this.selectedDates.start.setHours(this.nightCheckInHour, 0, 0, 0)
+        console.log('SELECTION LOL Start date set to:', this.selectedDates.start)
         this.selectedDates.end = null
         this.selectionMode = 'end'
+        console.log('SELECTION LOL Selection mode changed to end')
+      } else {
+        console.log('SELECTION LOL Selecting end date')
+        
+        // For night bookings with suite selection, allow ranges that include golden dates
+        // but clear suite selection if any date in range needs it
+        const rangeNeedsSuiteClearing = this.isDateRangePartiallyAvailable(this.selectedDates.start, selectedDate)
+        console.log('SELECTION LOL rangeNeedsSuiteClearing:', rangeNeedsSuiteClearing)
+        
+        const rangeFullyAvailable = this.isDateRangeFullyAvailable(this.selectedDates.start, selectedDate)
+        console.log('SELECTION LOL rangeFullyAvailable:', rangeFullyAvailable)
+        
+        if (!rangeFullyAvailable && !rangeNeedsSuiteClearing) {
+          console.log('SELECTION LOL Range not fully available and does not need suite clearing, resetting selection')
+          this.resetSelection() // Reset selection when invalid range is selected
+          return
+        }
 
-        // If this date needs suite clearing (golden cell), emit the event
-        if (needsSuiteClearing) {
-          console.log('CalendarSelector: Golden start date selected for night booking, clearing suite selection')
+        // Set end date
+        this.selectedDates.end = new Date(selectedDate)
+        this.selectedDates.end.setHours(this.nightCheckOutHour, 0, 0, 0)
+        console.log('SELECTION LOL End date set to:', this.selectedDates.end)
+        this.selectionMode = 'start'
+        console.log('SELECTION LOL Selection mode changed to start')
+
+        // If this date or range needs suite clearing (includes golden cells), emit the event
+        if (rangeNeedsSuiteClearing) {
+          console.log('SELECTION LOL CalendarSelector: Golden end date or range selected for night booking, clearing suite selection')
           this.$emit('suite-deselected')
-        } else if (slotAvailable) {
-          // If this date is fully available for the selected suite, reset suite selection if it was previously cleared
-          console.log('CalendarSelector: Fully available start date selected for night booking, resetting suite selection')
+        } else {
+          // If the end date and range are fully available for the selected suite, reset suite selection if it was previously cleared
+          console.log('SELECTION LOL CalendarSelector: Fully available end date and range selected for night booking, resetting suite selection')
           this.$emit('suite-reselected')
         }
-      } else {
-        // Selecting end date - check if all dates in range are available
-        if (selectedDate <= this.selectedDates.start) {
-          // If selected date is before or same as start, reset start date
-          this.selectedDates.start = new Date(selectedDate)
-          this.selectedDates.start.setHours(this.nightCheckInHour, 0, 0, 0)
-          this.selectedDates.end = null
-          this.selectionMode = 'end'
 
-          // If this reset start date needs suite clearing (golden cell), emit the event
-          if (needsSuiteClearing) {
-            console.log('CalendarSelector: Golden reset start date selected for night booking, clearing suite selection')
-            this.$emit('suite-deselected')
-          } else if (slotAvailable) {
-            // If this reset start date is fully available for the selected suite, reset suite selection if it was previously cleared
-            console.log('CalendarSelector: Fully available reset start date selected for night booking, resetting suite selection')
-            this.$emit('suite-reselected')
-          }
-        } else {
-          // For night bookings with suite selection, allow ranges that include golden dates
-          // but clear suite selection if any date in range needs it
-          const rangeNeedsSuiteClearing = this.isDateRangePartiallyAvailable(this.selectedDates.start, selectedDate)
-
-          if (!this.isDateRangeFullyAvailable(this.selectedDates.start, selectedDate) && !rangeNeedsSuiteClearing) {
-            this.resetSelection() // Reset selection when invalid range is selected
-            return
-          }
-
-          // Set end date
-          this.selectedDates.end = new Date(selectedDate)
-          this.selectedDates.end.setHours(this.nightCheckOutHour, 0, 0, 0)
-          this.selectionMode = 'start'
-
-          // If this date or range needs suite clearing (includes golden cells), emit the event
-          if (needsSuiteClearing || rangeNeedsSuiteClearing) {
-            console.log('CalendarSelector: Golden end date or range selected for night booking, clearing suite selection')
-            this.$emit('suite-deselected')
-          } else {
-            // If the end date and range are fully available for the selected suite, reset suite selection if it was previously cleared
-            console.log('CalendarSelector: Fully available end date and range selected for night booking, resetting suite selection')
-            this.$emit('suite-reselected')
-          }
-
-          // Emit date selection when both dates are selected for pricing calculation
-          console.log('CalendarSelector emitting preliminary date-selected for night booking')
-          this.$emit('date-selected', {
-            start: this.selectedDates.start.toISOString(),
-            end: this.selectedDates.end.toISOString(),
-            type: this.selectedBookingType
-          })
-        }
+        // Emit date selection when both dates are selected for pricing calculation
+        console.log('SELECTION LOL CalendarSelector emitting preliminary date-selected for night booking')
+        console.log('SELECTION LOL Emitting with start:', this.selectedDates.start.toISOString())
+        console.log('SELECTION LOL Emitting with end:', this.selectedDates.end.toISOString())
+        this.$emit('date-selected', {
+          start: this.selectedDates.start.toISOString(),
+          end: this.selectedDates.end.toISOString(),
+          type: this.selectedBookingType
+        })
       }
     },
 
