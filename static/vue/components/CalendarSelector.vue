@@ -597,48 +597,92 @@ export default {
     },
 
     isDateRangePartiallyAvailable(startDate, endDate) {
+      console.log('PARTIAL LOG: Starting isDateRangePartiallyAvailable check', { startDate, endDate })
       const start = new Date(startDate)
       const end = new Date(endDate)
       let current = new Date(start)
       let foundPartial = false
 
       while (current <= end) {
+        console.log('PARTIAL LOG: Checking date', current.toDateString())
         const suite = this.getNuiteeAvailabilityFlags(current)
         const others = this.getOtherSuitesAvailabilityFlags(current)
+        console.log('PARTIAL LOG: Availability flags', { suite, others })
 
         const isStart = current.toDateString() === start.toDateString()
         const isEnd = current.toDateString() === end.toDateString()
-
-        let suiteAvailable
-        let othersAvailable
+        console.log('PARTIAL LOG: Date position', { isStart, isEnd })
 
         if (isStart) {
           // Only night matters for the starting date
-          suiteAvailable = suite.night
-          othersAvailable = others.night
+          const suiteNightAvailable = suite.night
+          const othersNightAvailable = others.night
+          console.log('PARTIAL LOG: Start date - checking night availability', { suiteNightAvailable, othersNightAvailable })
+          
+          // Completely unavailable → return false
+          if (!suiteNightAvailable && !othersNightAvailable) {
+            console.log('PARTIAL LOG: Start date night completely unavailable, returning false')
+            return false
+          }
+          
+          // Partial availability
+          if (!suiteNightAvailable && othersNightAvailable) {
+            console.log('PARTIAL LOG: Found partial availability on start date night')
+            foundPartial = true
+          }
         } else if (isEnd) {
           // Only morning matters for the ending date
-          suiteAvailable = suite.morning
-          othersAvailable = others.morning
+          const suiteMorningAvailable = suite.morning
+          const othersMorningAvailable = others.morning
+          console.log('PARTIAL LOG: End date - checking morning availability', { suiteMorningAvailable, othersMorningAvailable })
+          
+          // Completely unavailable → return false
+          if (!suiteMorningAvailable && !othersMorningAvailable) {
+            console.log('PARTIAL LOG: End date morning completely unavailable, returning false')
+            return false
+          }
+          
+          // Partial availability
+          if (!suiteMorningAvailable && othersMorningAvailable) {
+            console.log('PARTIAL LOG: Found partial availability on end date morning')
+            foundPartial = true
+          }
         } else {
-          // Middle days: either morning OR night makes the full day usable
-          suiteAvailable = suite.morning || suite.night
-          othersAvailable = others.morning || others.night
-        }
-
-        // Completely unavailable → return false
-        if (!suiteAvailable && !othersAvailable) {
-          return false
-        }
-
-        // Partial availability
-        if (!suiteAvailable && othersAvailable) {
-          foundPartial = true
+          // Middle days: check morning and night separately
+          const suiteMorningAvailable = suite.morning
+          const othersMorningAvailable = others.morning
+          const suiteNightAvailable = suite.night
+          const othersNightAvailable = others.night
+          console.log('PARTIAL LOG: Middle date - checking morning and night separately', { 
+            suiteMorningAvailable, 
+            othersMorningAvailable, 
+            suiteNightAvailable, 
+            othersNightAvailable 
+          })
+          
+          // Check morning availability
+          if (!suiteMorningAvailable && !othersMorningAvailable) {
+            console.log('PARTIAL LOG: Middle date morning completely unavailable, returning false')
+            return false
+          }
+          
+          // Check night availability
+          if (!suiteNightAvailable && !othersNightAvailable) {
+            console.log('PARTIAL LOG: Middle date night completely unavailable, returning false')
+            return false
+          }
+          
+          // Check for partial availability in morning or night
+          if ((!suiteMorningAvailable && othersMorningAvailable) || (!suiteNightAvailable && othersNightAvailable)) {
+            console.log('PARTIAL LOG: Found partial availability on middle date')
+            foundPartial = true
+          }
         }
 
         current.setDate(current.getDate() + 1)
       }
 
+      console.log('PARTIAL LOG: Final result', { foundPartial })
       return foundPartial
     },
 
