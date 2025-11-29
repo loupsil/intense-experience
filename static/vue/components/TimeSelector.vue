@@ -28,13 +28,12 @@
             <div class="detail-label">ARRIVAL</div>
             <select v-model="selectedArrival" class="time-select">
               <option value="">Select</option>
-              <option 
-                v-for="time in arrivalTimes" 
-                :key="time" 
+              <option
+                v-for="time in availableArrivalTimes"
+                :key="time"
                 :value="time"
-                :disabled="isArrivalTimeDisabled(time)"
               >
-                {{ time }}{{ isArrivalTimeDisabled(time) ? ' (No slots available)' : '' }}
+                {{ time }}
               </option>
             </select>
           </div>
@@ -42,13 +41,12 @@
             <div class="detail-label">DEPARTURE</div>
             <select v-model="selectedDeparture" class="time-select">
               <option value="">Select</option>
-              <option 
-                v-for="time in departureTimes" 
-                :key="time" 
+              <option
+                v-for="time in availableDepartureTimes"
+                :key="time"
                 :value="time"
-                :disabled="isDepartureTimeDisabled(time)"
               >
-                {{ time }}{{ isDepartureTimeDisabled(time) ? ' (No slots available)' : '' }}
+                {{ time }}
               </option>
             </select>
           </div>
@@ -153,6 +151,14 @@ export default {
         const isValidNights = this.calculateNights() <= 2
         return hasDates && isValidNights
       }
+    },
+
+    availableArrivalTimes() {
+      return this.arrivalTimes.filter(time => !this.isArrivalTimeDisabled(time))
+    },
+
+    availableDepartureTimes() {
+      return this.departureTimes.filter(time => !this.isDepartureTimeDisabled(time))
     },
     validationMessage() {
       if (this.bookingType === 'day' && this.selectedArrival && this.selectedDeparture && this.limitsLoaded) {
