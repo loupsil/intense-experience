@@ -9,7 +9,7 @@
     <!-- Suites loaded -->
     <div v-else class="suites-grid">
       <div
-        v-for="suite in availableSuites"
+        v-for="suite in sortedSuites"
         :key="suite.Id"
         class="suite-card"
         :class="{
@@ -120,6 +120,15 @@ export default {
   computed: {
     bookingType() {
       return this.serviceType === 'journée' ? 'day' : 'night'
+    },
+    sortedSuites() {
+      // Sort suites to show available ones first
+      return [...this.availableSuites].sort((a, b) => {
+        const aAvailable = this.suiteAvailability[a.Id] ? 1 : 0
+        const bAvailable = this.suiteAvailability[b.Id] ? 1 : 0
+        // Sort in descending order (available first)
+        return bAvailable - aAvailable
+      })
     }
   },
   emits: [
