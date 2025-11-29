@@ -182,9 +182,16 @@ def check_availability():
         logger.error("Missing required parameters")
         return jsonify({"error": "Missing required parameters", "status": "error"}), 400
 
+    # Brussels timezone for consistent time comparisons
+    brussels_tz = pytz.timezone('Europe/Brussels')
+    
     # Add cleaning buffers
     start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
     end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    
+    # Convert to Brussels timezone
+    start_dt_brussels = start_dt.astimezone(brussels_tz)
+    end_dt_brussels = end_dt.astimezone(brussels_tz)
 
     if booking_type == 'night':
         # For nights: add buffer before and after
@@ -232,8 +239,22 @@ def check_availability():
             if suite_ids_to_check:
                 # Check if reservation conflicts with any of the suite IDs we need to check
                 if res_requested_category in suite_ids_to_check:
-                    conflicting_reservations.append(reservation)
-                    is_available = False
+                    # Apply buffer to existing reservation times (1 hour before and 1 hour after)
+                    res_start_utc = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
+                    res_end_utc = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+                    
+                    # Convert to Brussels timezone for comparison
+                    res_start = res_start_utc.astimezone(brussels_tz)
+                    res_end = res_end_utc.astimezone(brussels_tz)
+                    
+                    # Apply buffer to existing reservations (1 hour before and 1 hour after)
+                    res_start_buffered = res_start - timedelta(hours=CLEANING_BUFFER_HOURS)
+                    res_end_buffered = res_end + timedelta(hours=CLEANING_BUFFER_HOURS)
+                    
+                    # Check for overlap: new booking WITHOUT buffer vs existing reservation WITH buffer
+                    if not (end_dt_brussels <= res_start_buffered or start_dt_brussels >= res_end_buffered):
+                        conflicting_reservations.append(reservation)
+                        is_available = False
             else:
                 # General availability check - any reservation blocks the time
                 conflicting_reservations.append(reservation)
@@ -775,18 +796,26 @@ def check_time_options_availability():
         if reservation.get('RequestedCategoryId') != journee_suite_id:
             continue
         
-        res_start = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
-        res_end = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+        res_start_utc = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
+        res_end_utc = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+        
+        # Convert to Brussels timezone for comparison
+        res_start = res_start_utc.astimezone(brussels_tz)
+        res_end = res_end_utc.astimezone(brussels_tz)
+        
+        # Apply buffer to existing reservations (1 hour before and 1 hour after)
+        res_start_buffered = res_start - timedelta(hours=CLEANING_BUFFER_HOURS)
+        res_end_buffered = res_end + timedelta(hours=CLEANING_BUFFER_HOURS)
         
         # Check if reservation overlaps with early check-in slot (17:00-18:00 on check-in date)
-        if not (res_end <= early_checkin_start or res_start >= early_checkin_end):
+        if not (res_end_buffered <= early_checkin_start or res_start_buffered >= early_checkin_end):
             early_checkin_available = False
-            logger.info(f"Early check-in blocked by reservation from {res_start} to {res_end}")
+            logger.info(f"Early check-in blocked by reservation from {res_start} to {res_end} (with buffer: {res_start_buffered} to {res_end_buffered})")
         
         # Check if reservation overlaps with late check-out slot (12:00-13:00 on check-out date)
-        if not (res_end <= late_checkout_start or res_start >= late_checkout_end):
+        if not (res_end_buffered <= late_checkout_start or res_start_buffered >= late_checkout_end):
             late_checkout_available = False
-            logger.info(f"Late check-out blocked by reservation from {res_start} to {res_end}")
+            logger.info(f"Late check-out blocked by reservation from {res_start} to {res_end} (with buffer: {res_start_buffered} to {res_end_buffered})")
     
     logger.info(f"Time options availability: early_checkin={early_checkin_available}, late_checkout={late_checkout_available}")
     

@@ -14,7 +14,7 @@ DAY_SERVICE_ID = "86fcc6a7-75ce-457a-a425-b3850108b6bf"  # JOURNEE
 NIGHT_SERVICE_ID = "7ba0b732-93cc-477a-861d-b3850108b730"  # NUITEE
 
 # Default cleaning buffer in hours
-CLEANING_BUFFER_HOURS = 0
+CLEANING_BUFFER_HOURS = 1
 
 # Booking duration limits for journee bookings
 DAY_MIN_HOURS = 3
@@ -132,7 +132,6 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                         belgian_tz = pytz.timezone('Europe/Brussels')
                         slot_start = belgian_tz.localize(datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()))
                         slot_end = belgian_tz.localize(datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()))
-                        slot_end_buffered = slot_end + timedelta(hours=CLEANING_BUFFER_HOURS)
 
                         # Check if this slot conflicts with any reservation
                         is_available = True
@@ -140,11 +139,19 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                             if reservation.get('RequestedCategoryId') != suite_id:
                                 continue
 
-                            res_start = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
-                            res_end = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+                            res_start_utc = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
+                            res_end_utc = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+                            
+                            # Convert to Brussels timezone for comparison
+                            res_start = res_start_utc.astimezone(belgian_tz)
+                            res_end = res_end_utc.astimezone(belgian_tz)
+                            
+                            # Apply buffer to existing reservations (1 hour before and 1 hour after)
+                            res_start_buffered = res_start - timedelta(hours=CLEANING_BUFFER_HOURS)
+                            res_end_buffered = res_end + timedelta(hours=CLEANING_BUFFER_HOURS)
 
-                            # Check for overlap (including buffer)
-                            if not (slot_end_buffered <= res_start or slot_start >= res_end):
+                            # Check for overlap (new slot WITHOUT buffer vs existing reservation WITH buffer)
+                            if not (slot_end <= res_start_buffered or slot_start >= res_end_buffered):
                                 is_available = False
                                 break
 
@@ -306,8 +313,12 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
 
                 # Filter reservations that overlap with this specific date
                 for reservation in reservations:
-                    res_start = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
-                    res_end = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+                    res_start_utc = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
+                    res_end_utc = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+                    
+                    # Convert to Brussels timezone for comparison with date boundaries
+                    res_start = res_start_utc.astimezone(belgian_tz)
+                    res_end = res_end_utc.astimezone(belgian_tz)
 
                     # Check if reservation overlaps with this date (timezone-aware)
                     # A reservation overlaps if it starts before the date ends AND ends after the date starts
@@ -328,11 +339,16 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
 
             def is_slot_available_for_suite(slot_start, slot_end, suite_reservations):
                 """Check if a suite has no reservation conflicts for the provided slot."""
-                slot_end_with_buffer = slot_end + timedelta(hours=CLEANING_BUFFER_HOURS)
                 for reservation in suite_reservations:
                     res_start = reservation["start"]
                     res_end = reservation["end"]
-                    if not (slot_end_with_buffer <= res_start or slot_start >= res_end):
+                    
+                    # Apply buffer to existing reservations (1 hour before and 1 hour after)
+                    res_start_buffered = res_start - timedelta(hours=CLEANING_BUFFER_HOURS)
+                    res_end_buffered = res_end + timedelta(hours=CLEANING_BUFFER_HOURS)
+                    
+                    # Check for overlap (new slot WITHOUT buffer vs existing reservation WITH buffer)
+                    if not (slot_end <= res_start_buffered or slot_start >= res_end_buffered):
                         return False
                 return True
 
