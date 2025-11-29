@@ -48,6 +48,16 @@ DEPARTURE_TIMES = ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'
 NIGHT_CHECK_IN_HOUR = 19  # 19:00 (7:00 PM)
 NIGHT_CHECK_OUT_HOUR = 10  # 10:00 (10:00 AM)
 
+# Suite ID mapping: maps day service suite IDs to night service suite IDs
+# This is needed because the same physical suite has different IDs in each service
+SUITE_ID_MAPPING = {
+    # Intense Suite
+    "e4706d3a-2a06-4cb7-a449-b3850108c66f": "f867b5c6-f62d-451c-96ec-b3850108c66f",  # journee -> nuitee
+}
+
+# Reverse mapping for convenience
+SUITE_ID_MAPPING_REVERSE = {v: k for k, v in SUITE_ID_MAPPING.items()}
+
 def make_mews_request(endpoint, payload):
     """Make a request to Mews API"""
     url = f"{MEWS_BASE_URL}/{endpoint}"
@@ -122,6 +132,15 @@ def get_suites():
         return jsonify({"suites": suites, "status": "success"})
     return jsonify({"error": "Failed to fetch suites", "status": "error"}), 500
 
+@intense_experience_bp.route('/intense_experience-api/suite-id-mapping', methods=['GET'])
+def get_suite_id_mapping():
+    """Get suite ID mapping between day and night services"""
+    return jsonify({
+        "mapping": SUITE_ID_MAPPING,
+        "reverse_mapping": SUITE_ID_MAPPING_REVERSE,
+        "status": "success"
+    })
+
 @intense_experience_bp.route('/intense_experience-api/bulk-availability-journee', methods=['POST'])
 def bulk_availability_journee_route():
     """Check availability for day bookings (journée) - shows date as unavailable if no valid time slots remain"""
@@ -147,7 +166,7 @@ def bulk_availability_nuitee_route():
 
 @intense_experience_bp.route('/intense_experience-api/availability', methods=['POST'])
 def check_availability():
-    """Check availability for a date range with cleaning buffers"""
+    """Check availability for a date range with cleaning buffers - considers both services for cross-service suite matching"""
     data = request.json
     service_id = data.get('service_id')
     suite_id = data.get('suite_id')
@@ -172,10 +191,12 @@ def check_availability():
         buffered_start = start_dt.isoformat()
         buffered_end = (end_dt + timedelta(hours=CLEANING_BUFFER_HOURS)).isoformat()
 
+    # Fetch reservations from both services to handle cross-service suite matching
     payload = {
         "Client": "Intense Experience Booking",
         "StartUtc": buffered_start,
-        "EndUtc": buffered_end
+        "EndUtc": buffered_end,
+        "ServiceIds": [DAY_SERVICE_ID, NIGHT_SERVICE_ID]
     }
 
     result = make_mews_request("reservations/getAll", payload)
@@ -187,13 +208,26 @@ def check_availability():
     is_available = True
     conflicting_reservations = []
 
+    # Determine which suite IDs to check based on mapping (AND rule for day bookings)
+    suite_ids_to_check = []
+    if suite_id:
+        suite_ids_to_check.append(suite_id)
+        
+        # For day bookings with a mapped suite, check BOTH day and night IDs (AND rule)
+        if booking_type == 'day':
+            # Check if this suite has a corresponding night suite ID
+            night_suite_id = SUITE_ID_MAPPING.get(suite_id)
+            if night_suite_id:
+                suite_ids_to_check.append(night_suite_id)
+                logger.info(f"Day booking for mapped suite - checking both IDs: {suite_id} and {night_suite_id}")
+
     if "Reservations" in result:
         for reservation in result["Reservations"]:
             res_requested_category = reservation.get('RequestedCategoryId')
 
-            if suite_id:
-                # Check specific suite availability
-                if res_requested_category == suite_id:
+            if suite_ids_to_check:
+                # Check if reservation conflicts with any of the suite IDs we need to check
+                if res_requested_category in suite_ids_to_check:
                     conflicting_reservations.append(reservation)
                     is_available = False
             else:

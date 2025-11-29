@@ -29,7 +29,7 @@ NIGHT_CHECK_IN_HOUR = 19  # 19:00 (7:00 PM)
 NIGHT_CHECK_OUT_HOUR = 10  # 10:00 (10:00 AM)
 
 def check_bulk_availability_journee(make_mews_request_func, data):
-    """Check availability for day bookings (journée) - shows date as unavailable if no valid time slots remain"""
+    """Check availability for day bookings (journée) - considers reservations from both day and night services - shows date as unavailable if no valid time slots remain"""
     service_id = data.get('service_id')
     dates = data.get('dates')  # List of ISO date strings
     suite_id = data.get('suite_id')  # Optional: filter by specific suite
@@ -38,15 +38,10 @@ def check_bulk_availability_journee(make_mews_request_func, data):
         logger.error("Missing required parameters")
         return {"error": "Missing required parameters", "status": "error"}, 400
 
-    # Only apply bulk availability logic for DAY service
-    if service_id != DAY_SERVICE_ID:
-        logger.info(f"Bulk availability not supported for service {service_id}, only for JOURNEE ({DAY_SERVICE_ID})")
-        return {"error": "Bulk availability only supported for day bookings", "status": "error"}, 400
-
-    # Get all suite categories for this service
+    # Get all suite categories for both day and night services
     payload = {
         "EnterpriseIds": [ENTERPRISE_ID],
-        "ServiceIds": [service_id],
+        "ServiceIds": [DAY_SERVICE_ID, NIGHT_SERVICE_ID],
         "IncludeDefault": False,
         "Limitation": {"Count": 100}
     }
@@ -96,7 +91,8 @@ def check_bulk_availability_journee(make_mews_request_func, data):
         payload = {
             "Client": "Intense Experience Booking",
             "StartUtc": buffered_start,
-            "EndUtc": buffered_end
+            "EndUtc": buffered_end,
+            "ServiceIds": [DAY_SERVICE_ID, NIGHT_SERVICE_ID]
         }
 
         result = make_mews_request_func("reservations/getAll", payload)

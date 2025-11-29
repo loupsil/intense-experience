@@ -252,7 +252,9 @@ export default {
       selectionMode: 'start', // 'start' or 'end'
       nightCheckInHour: null,
       nightCheckOutHour: null,
-      bookingLimitsLoaded: false
+      bookingLimitsLoaded: false,
+      suiteIdMapping: {}, // Maps day service suite IDs to night service suite IDs
+      suiteIdMappingReverse: {} // Maps night service suite IDs to day service suite IDs
     }
   },
   computed: {
@@ -300,9 +302,10 @@ export default {
   },
   async mounted() {
     // Calendar is now always displayed for both day and night bookings
-    // Fetch booking limits and availability in parallel since availability doesn't depend on limits
+    // Fetch booking limits, suite mapping, and availability in parallel
     await Promise.all([
       this.fetchBookingLimits(),
+      this.fetchSuiteIdMapping(),
       this.fetchAvailabilityForDisplayedDates()
     ])
   },
@@ -321,6 +324,20 @@ export default {
       } catch (error) {
         console.error('Failed to fetch booking limits from backend:', error)
         this.bookingLimitsLoaded = true // Still mark as loaded to prevent infinite loading
+      }
+    },
+
+    async fetchSuiteIdMapping() {
+      try {
+        const response = await fetch('/intense_experience-api/suite-id-mapping')
+        const data = await response.json()
+        if (data.status === 'success') {
+          this.suiteIdMapping = data.mapping || {}
+          this.suiteIdMappingReverse = data.reverse_mapping || {}
+          console.log('Suite ID mapping loaded:', this.suiteIdMapping)
+        }
+      } catch (error) {
+        console.error('Failed to fetch suite ID mapping:', error)
       }
     },
 
@@ -486,8 +503,33 @@ export default {
         // If we don't have availability data yet, show as unavailable (will load)
         return false
       }
-      // Date is available if at least one suite has at least one time slot free
-      return availability.available
+      
+      // If no specific suite is selected, use the general availability flag
+      if (!this.selectedSuite) {
+        return availability.available
+      }
+      
+      // For day bookings with a specific suite selected, check both day and night suite IDs
+      const selectedSuiteId = this.selectedSuite.Id
+      const suiteAvailability = availability.suite_availability || {}
+      
+      // Get the corresponding night suite ID if available
+      const nightSuiteId = this.suiteIdMapping[selectedSuiteId]
+      
+      // Check if the selected suite (day ID) has available slots
+      const selectedSuiteSlots = suiteAvailability[selectedSuiteId] || []
+      const selectedSuiteAvailable = selectedSuiteSlots.length > 0
+      
+      // If there's a mapping to a night suite ID, BOTH must be available (AND rule)
+      if (nightSuiteId) {
+        const nightSuiteSlots = suiteAvailability[nightSuiteId] || []
+        const nightSuiteAvailable = nightSuiteSlots.length > 0
+        // Both day AND night IDs must have available slots
+        return selectedSuiteAvailable && nightSuiteAvailable
+      }
+      
+      // If no mapping exists, just check the day suite ID
+      return selectedSuiteAvailable
     },
 
     // The function is used to get the availability of the date
@@ -697,19 +739,40 @@ export default {
       const availability = this.getDateAvailability(date)
       if (!availability) return false
 
-      // Check if the selected suite is unavailable
+      // For day bookings, we need to check both the day suite ID and its corresponding night suite ID (to handle early check in and late check out)
       const selectedSuiteId = this.selectedSuite.Id
       const suiteAvailability = availability.suite_availability || {}
+      
+      // Get the corresponding night suite ID if available
+      const nightSuiteId = this.suiteIdMapping[selectedSuiteId]
+      
+      // Check if the selected suite (day ID) has available slots
       const selectedSuiteSlots = suiteAvailability[selectedSuiteId] || []
       const selectedSuiteAvailable = selectedSuiteSlots.length > 0
+      
+      // Determine if the selected suite is fully available based on mapping
+      let selectedSuiteFullyAvailable = false
+      if (nightSuiteId) {
+        // If there's a mapping, BOTH day and night IDs must have slots (AND rule)
+        const nightSuiteSlots = suiteAvailability[nightSuiteId] || []
+        const nightSuiteAvailable = nightSuiteSlots.length > 0
+        selectedSuiteFullyAvailable = selectedSuiteAvailable && nightSuiteAvailable
+      } else {
+        // If no mapping, just check the day suite ID
+        selectedSuiteFullyAvailable = selectedSuiteAvailable
+      }
 
-      // Check if other suites are available
+      // Check if other suites are available (excluding both day and night IDs of selected suite)
       const otherSuitesAvailable = Object.keys(suiteAvailability).some(suiteId => {
-        return suiteId !== selectedSuiteId && suiteAvailability[suiteId].length > 0
+        // Exclude the selected suite's day ID and night ID
+        if (suiteId === selectedSuiteId || suiteId === nightSuiteId) {
+          return false
+        }
+        return suiteAvailability[suiteId].length > 0
       })
 
-      // Partial availability: selected suite unavailable BUT other suites available
-      return !selectedSuiteAvailable && otherSuitesAvailable
+      // Partial availability: selected suite NOT fully available BUT other suites available
+      return !selectedSuiteFullyAvailable && otherSuitesAvailable
     },
 
     isDateSelected(date) {
