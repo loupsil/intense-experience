@@ -77,6 +77,10 @@
           </div>
         </div>
 
+        <div v-if="validationMessage" class="validation-message">
+          {{ validationMessage }}
+        </div>
+
         <button class="book-btn" :disabled="!canBook" @click="bookSuite">BOOK A SUITE</button>
         <div class="no-charge-text">You won't be charged yet</div>
       </div>
@@ -140,16 +144,24 @@ export default {
         const isValidDuration = duration >= this.bookingLimits.day_min_hours && duration <= this.bookingLimits.day_max_hours
         return hasSelection && isValidDuration
       } else {
-        return this.selectedDates.start && this.selectedDates.end
+        // For night bookings, check that dates are selected and number of nights doesn't exceed 2
+        const hasDates = this.selectedDates.start && this.selectedDates.end
+        const isValidNights = this.calculateNights() <= 2
+        return hasDates && isValidNights
       }
     },
     validationMessage() {
       if (this.bookingType === 'day' && this.selectedArrival && this.selectedDeparture && this.limitsLoaded) {
         const duration = this.calculateHours()
         if (duration < this.bookingLimits.day_min_hours) {
-          return `Durée minimum: ${this.bookingLimits.day_min_hours} heures`
+          return `Minimum duration: ${this.bookingLimits.day_min_hours} hours`
         } else if (duration > this.bookingLimits.day_max_hours) {
-          return `Durée maximum: ${this.bookingLimits.day_max_hours} heures`
+          return `Maximum duration: ${this.bookingLimits.day_max_hours} hours`
+        }
+      } else if (this.bookingType === 'night' && this.selectedDates.start && this.selectedDates.end) {
+        const nights = this.calculateNights()
+        if (nights > 2) {
+          return `Maximum 2 nights`
         }
       }
       return null
@@ -526,7 +538,7 @@ export default {
 
           return {
             total: suitePricing.Prices[0] * numberOfNights,
-            calculation: `${suitePricing.Prices[0]}€ × ${numberOfNights} nuits`
+            calculation: `${suitePricing.Prices[0]}€ × ${numberOfNights} nights`
           }
         }
       } else {

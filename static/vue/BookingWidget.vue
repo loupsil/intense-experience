@@ -612,7 +612,7 @@ export default {
           const numberOfNights = this.calculateNumberOfNights(startDate, endDate)
           return {
             total: suitePricing.Prices[0] * numberOfNights,
-            calculation: `${suitePricing.Prices[0]}€ × ${numberOfNights} nuits`
+            calculation: `${suitePricing.Prices[0]}€ × ${numberOfNights} nights`
           }
         }
       } else {
