@@ -364,7 +364,9 @@ export default {
       reservationError: null,
       bookingType: 'day', // 'day' or 'night'
       debugMode: false, // Debug mode toggle
-      suiteClearedForGoldenCell: false
+      suiteClearedForGoldenCell: false,
+      hasArriveeAnticipee: false, // Track if early check-in is selected
+      hasDepartTardif: false // Track if late check-out is selected
     }
   },
   computed: {
@@ -683,6 +685,9 @@ export default {
       // Clear selected options when service changes to prevent invalid selections
       this.selectedOptions = []
       this.suitePriceCalculation = ''
+      // Reset time modification flags
+      this.hasArriveeAnticipee = false
+      this.hasDepartTardif = false
 
       // Emit service selection event to parent
       const serviceType = service.Id === JOURNEE_ID ? 'journée' : 'nuitée'
@@ -813,9 +818,22 @@ export default {
     },
 
 
-    updateOptions(options, totalPrice) {
+    updateOptions(options, totalPrice, timeModifiers) {
       this.selectedOptions = options
       this.pricing.options = totalPrice || 0
+      
+      // Update time modification flags if provided
+      if (timeModifiers) {
+        this.hasArriveeAnticipee = timeModifiers.hasArriveeAnticipee || false
+        this.hasDepartTardif = timeModifiers.hasDepartTardif || false
+        
+        if (this.debugMode) {
+          console.log('Time modifiers updated:', {
+            hasArriveeAnticipee: this.hasArriveeAnticipee,
+            hasDepartTardif: this.hasDepartTardif
+          })
+        }
+      }
     },
 
     async createReservation() {
@@ -823,13 +841,93 @@ export default {
       this.reservationError = null
 
       try {
+        // Adjust times for nuitée bookings based on selected products
+        let startDate = this.selectedDates.start
+        let endDate = this.selectedDates.end
+
+        if (this.bookingType === 'night') {
+          // Helper function to create a date at a specific Brussels time and convert to UTC
+          const createBrusselsTime = (dateStr, hour) => {
+            // Get the date part (YYYY-MM-DD)
+            const datePart = dateStr.split('T')[0]
+            
+            // Create date string in Brussels timezone
+            const brusselsDateStr = `${datePart}T${hour.toString().padStart(2, '0')}:00:00`
+            
+            // Parse as local date first
+            const date = new Date(brusselsDateStr)
+            
+            // Get Brussels timezone offset in minutes
+            // Brussels is UTC+1 in winter, UTC+2 in summer (DST)
+            const formatter = new Intl.DateTimeFormat('en-US', {
+              timeZone: 'Europe/Brussels',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: false,
+              timeZoneName: 'short'
+            })
+            
+            // Create the target date in Brussels time
+            const targetDate = new Date(`${datePart}T00:00:00Z`)
+            
+            // We need to find what UTC time gives us the desired Brussels time
+            // Approach: Create a date object and manually adjust for Brussels offset
+            const utcDate = new Date(Date.UTC(
+              parseInt(datePart.split('-')[0]),
+              parseInt(datePart.split('-')[1]) - 1,
+              parseInt(datePart.split('-')[2]),
+              hour,
+              0,
+              0,
+              0
+            ))
+            
+            // Check Brussels offset for this date (handles DST)
+            const testDate = new Date(datePart + 'T12:00:00')
+            const utcStr = testDate.toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
+            const brusselsStr = testDate.toLocaleString('en-US', { timeZone: 'Europe/Brussels', hour12: false })
+            
+            // Calculate offset in hours
+            const utcTime = new Date(utcStr).getTime()
+            const brusselsTime = new Date(brusselsStr).getTime()
+            const offsetHours = Math.round((brusselsTime - utcTime) / (1000 * 60 * 60))
+            
+            // Subtract the offset to get the correct UTC time
+            utcDate.setHours(utcDate.getHours() - offsetHours)
+            
+            return utcDate.toISOString()
+          }
+
+          // Adjust check-in time if "Arrivée anticipée" is selected (18:00 Brussels time)
+          if (this.hasArriveeAnticipee) {
+            startDate = createBrusselsTime(startDate, 18)
+            
+            if (this.debugMode) {
+              console.log('Adjusted check-in time for Arrivée anticipée to 18:00 Brussels time:', startDate)
+            }
+          }
+
+          // Adjust check-out time if "Départ tardif" is selected (12:00 Brussels time)
+          if (this.hasDepartTardif) {
+            endDate = createBrusselsTime(endDate, 12)
+            
+            if (this.debugMode) {
+              console.log('Adjusted check-out time for Départ tardif to 12:00 Brussels time:', endDate)
+            }
+          }
+        }
+
         const reservationPayload = {
           service_id: this.selectedService.Id,
           customer_id: this.customer.Id,
           suite_id: this.suiteForBooking?.Id,
           rate_id: this.getDefaultRateForService(),
-          start_date: this.selectedDates.start,
-          end_date: this.selectedDates.end,
+          start_date: startDate,
+          end_date: endDate,
           person_count: 2,
           options: this.selectedOptions
         }
@@ -971,6 +1069,8 @@ export default {
       this.reservation = null
       this.reservationError = null
       this.accessPoint = 'general'
+      this.hasArriveeAnticipee = false
+      this.hasDepartTardif = false
     },
 
     toggleDebug() {

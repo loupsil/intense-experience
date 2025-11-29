@@ -485,6 +485,55 @@ def create_reservation():
     end_date = data.get('end_date')
     person_count = data.get('person_count', 2)
     options = data.get('options', [])
+    
+    # Check if this is a nuitée booking and adjust times based on selected products
+    if service_id == NIGHT_SERVICE_ID:
+        has_arrivee_anticipee = False
+        has_depart_tardif = False
+        
+        # Check if special products are selected
+        for option in options:
+            option_name = option.get('Name', {})
+            # Handle both dict and string for Name
+            if isinstance(option_name, dict):
+                # Get French name or fallback to other languages
+                name = option_name.get('fr-FR') or option_name.get('en-US') or ''
+            else:
+                name = str(option_name)
+            
+            if 'Arrivée anticipée' in name or 'arrivée anticipée' in name.lower():
+                has_arrivee_anticipee = True
+                logger.info(f"Arrivée anticipée product detected: {name}")
+            elif 'Départ tardif' in name or 'départ tardif' in name.lower():
+                has_depart_tardif = True
+                logger.info(f"Départ tardif product detected: {name}")
+        
+        # Brussels timezone
+        brussels_tz = pytz.timezone('Europe/Brussels')
+        
+        # Adjust start_date if Arrivée anticipée is selected (change check-in to 18:00 Brussels time)
+        if has_arrivee_anticipee:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            # Convert to Brussels timezone
+            start_brussels = start_dt.astimezone(brussels_tz)
+            # Set time to 18:00 Brussels time
+            adjusted_start_brussels = start_brussels.replace(hour=18, minute=0, second=0, microsecond=0)
+            # Convert back to UTC
+            adjusted_start_utc = adjusted_start_brussels.astimezone(timezone.utc)
+            start_date = adjusted_start_utc.isoformat().replace('+00:00', 'Z')
+            logger.info(f"Adjusted start time for Arrivée anticipée to 18:00 Brussels time (UTC: {start_date})")
+        
+        # Adjust end_date if Départ tardif is selected (change check-out to 12:00 Brussels time)
+        if has_depart_tardif:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            # Convert to Brussels timezone
+            end_brussels = end_dt.astimezone(brussels_tz)
+            # Set time to 12:00 Brussels time
+            adjusted_end_brussels = end_brussels.replace(hour=12, minute=0, second=0, microsecond=0)
+            # Convert back to UTC
+            adjusted_end_utc = adjusted_end_brussels.astimezone(timezone.utc)
+            end_date = adjusted_end_utc.isoformat().replace('+00:00', 'Z')
+            logger.info(f"Adjusted end time for Départ tardif to 12:00 Brussels time (UTC: {end_date})")
 
     if not all([service_id, customer_id, suite_id, rate_id, start_date, end_date]):
         logger.error("Missing required reservation parameters")

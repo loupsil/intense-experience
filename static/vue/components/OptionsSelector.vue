@@ -149,8 +149,22 @@ export default {
       // Calculate total options price
       const totalOptionsPrice = this.calculateOptionsTotal()
 
-      // Emit both selected options and total price
-      this.$emit('options-updated', optionsWithPrices, totalOptionsPrice)
+      // Check for special time-modifying products (for nuitée mode)
+      const hasArriveeAnticipee = this.localSelectedOptions.some(option => {
+        const name = option.Names?.['fr-FR'] || option.Name || ''
+        return name.includes('Arrivée anticipée') || name.toLowerCase().includes('arrivée anticipée')
+      })
+
+      const hasDepartTardif = this.localSelectedOptions.some(option => {
+        const name = option.Names?.['fr-FR'] || option.Name || ''
+        return name.includes('Départ tardif') || name.toLowerCase().includes('départ tardif')
+      })
+
+      // Emit selected options, total price, and time modification flags
+      this.$emit('options-updated', optionsWithPrices, totalOptionsPrice, {
+        hasArriveeAnticipee,
+        hasDepartTardif
+      })
     },
 
     getProductPrice(product) {
