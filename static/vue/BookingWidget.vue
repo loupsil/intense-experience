@@ -166,6 +166,9 @@
           :number-of-nights="numberOfNights"
           :debug-mode="debugMode"
           :booking-type="bookingType"
+          :selected-suite="suiteForBooking"
+          :check-in-date="selectedDates.start"
+          :check-out-date="selectedDates.end"
           @options-updated="updateOptions"
           @products-loaded="handleProductsLoaded"
         />

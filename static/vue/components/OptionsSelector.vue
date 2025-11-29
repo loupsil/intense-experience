@@ -12,9 +12,18 @@
         v-for="product in products"
         :key="product.Id"
         class="option-card"
-        :class="{ selected: isSelected(product) }"
+        :class="{ 
+          selected: isSelected(product),
+          unavailable: !isProductAvailable(product)
+        }"
         @click="toggleOption(product)"
       >
+        <!-- Unavailable overlay -->
+        <div v-if="!isProductAvailable(product)" class="unavailable-overlay">
+          <i class="fas fa-ban"></i>
+          <span>Not available for selected dates</span>
+        </div>
+        
         <!-- Product Image -->
         <div class="option-image">
           <img :src="getProductImage(product) || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjhmOWZhIi8+PC9zdmc+'" :alt="product.Names?.['fr-FR'] || product.Name" />
@@ -73,20 +82,43 @@ export default {
     bookingType: {
       type: String,
       default: 'day'
+    },
+    selectedSuite: {
+      type: Object,
+      default: null
+    },
+    checkInDate: {
+      type: String,
+      default: ''
+    },
+    checkOutDate: {
+      type: String,
+      default: ''
     }
   },
   data() {
     return {
       localSelectedOptions: [...this.selectedOptions],
       isLoadingProducts: false,
-      productImages: {} // Store image URLs by product ID
+      productImages: {}, // Store image URLs by product ID
+      timeOptionsAvailability: {
+        early_checkin_available: true,
+        late_checkout_available: true
+      },
+      isCheckingAvailability: false
     }
   },
-  mounted() {
+  async mounted() {
     // Load products if we have a serviceId but no products loaded
     if (this.serviceId && this.products.length === 0) {
       this.loadProducts()
     }
+    
+    // Check time options availability for nuitée bookings
+    if (this.bookingType === 'night' && this.selectedSuite && this.checkInDate && this.checkOutDate) {
+      await this.checkTimeOptionsAvailability()
+    }
+    
     this.$nextTick(() => {
       this.updateBackgroundColor()
     })
@@ -113,14 +145,63 @@ export default {
         })
       },
       immediate: true
+    },
+    selectedSuite: {
+      async handler(newSuite) {
+        // Re-check availability when suite changes
+        if (this.bookingType === 'night' && newSuite && this.checkInDate && this.checkOutDate) {
+          await this.checkTimeOptionsAvailability()
+        }
+      }
+    },
+    checkInDate: {
+      async handler(newDate) {
+        // Re-check availability when check-in date changes
+        if (this.bookingType === 'night' && this.selectedSuite && newDate && this.checkOutDate) {
+          await this.checkTimeOptionsAvailability()
+        }
+      }
+    },
+    checkOutDate: {
+      async handler(newDate) {
+        // Re-check availability when check-out date changes
+        if (this.bookingType === 'night' && this.selectedSuite && this.checkInDate && newDate) {
+          await this.checkTimeOptionsAvailability()
+        }
+      }
     }
   },
   methods: {
     isSelected(product) {
       return this.localSelectedOptions.some(opt => opt.Id === product.Id)
     },
+    
+    isProductAvailable(product) {
+      // For nuitée bookings, check if time-based options are available
+      if (this.bookingType === 'night') {
+        const productName = (product.Names?.['fr-FR'] || product.Name || '').toLowerCase()
+        
+        // Check early check-in availability
+        if (productName.includes('arrivée anticipée')) {
+          return this.timeOptionsAvailability.early_checkin_available
+        }
+        
+        // Check late check-out availability
+        if (productName.includes('départ tardif')) {
+          return this.timeOptionsAvailability.late_checkout_available
+        }
+      }
+      
+      // All other products are available
+      return true
+    },
 
     toggleOption(product) {
+      // Don't allow selection if product is not available
+      if (!this.isProductAvailable(product)) {
+        return
+      }
+      
       const index = this.localSelectedOptions.findIndex(opt => opt.Id === product.Id)
       if (index > -1) {
         this.localSelectedOptions.splice(index, 1)
@@ -362,6 +443,58 @@ export default {
         this.$el.style.setProperty('--option-selected-background', '#f8f9ff')
         this.$el.style.setProperty('--option-selected-box-shadow', 'none')
       }
+    },
+    
+    async checkTimeOptionsAvailability() {
+      // Only check for nuitée bookings
+      if (this.bookingType !== 'night' || !this.selectedSuite || !this.checkInDate || !this.checkOutDate) {
+        return
+      }
+      
+      this.isCheckingAvailability = true
+      
+      try {
+        const response = await fetch('/intense_experience-api/check-time-options-availability', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            suite_id: this.selectedSuite.Id,
+            check_in_date: this.checkInDate,
+            check_out_date: this.checkOutDate
+          })
+        })
+        
+        const data = await response.json()
+        
+        if (data.status === 'success') {
+          this.timeOptionsAvailability = {
+            early_checkin_available: data.early_checkin_available,
+            late_checkout_available: data.late_checkout_available
+          }
+          
+          if (this.debugMode) {
+            console.log('Time options availability updated:', this.timeOptionsAvailability)
+          }
+          
+          // Remove any selected options that are no longer available
+          this.localSelectedOptions = this.localSelectedOptions.filter(option => {
+            return this.isProductAvailable(option)
+          })
+          
+          // Emit update if we removed any options
+          if (this.localSelectedOptions.length !== this.selectedOptions.length) {
+            this.emitUpdate()
+          }
+        } else {
+          console.error('Failed to check time options availability:', data.error)
+        }
+      } catch (error) {
+        console.error('Error checking time options availability:', error)
+      } finally {
+        this.isCheckingAvailability = false
+      }
     }
   }
 }
@@ -415,6 +548,44 @@ export default {
   border-color: #007bff;
   background: var(--option-selected-background, #f8f9ff);
   box-shadow: var(--option-selected-box-shadow, none);
+}
+
+.option-card.unavailable {
+  opacity: 0.6;
+  cursor: not-allowed;
+  position: relative;
+}
+
+.option-card.unavailable:hover {
+  transform: none;
+}
+
+.unavailable-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  gap: 10px;
+  z-index: 10;
+  padding: 20px;
+  text-align: center;
+}
+
+.unavailable-overlay i {
+  font-size: 32px;
+}
+
+.unavailable-overlay span {
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .option-image {

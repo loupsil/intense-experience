@@ -14,7 +14,7 @@ DAY_SERVICE_ID = "86fcc6a7-75ce-457a-a425-b3850108b6bf"  # JOURNEE
 NIGHT_SERVICE_ID = "7ba0b732-93cc-477a-861d-b3850108b730"  # NUITEE
 
 # Default cleaning buffer in hours
-CLEANING_BUFFER_HOURS = 1
+CLEANING_BUFFER_HOURS = 0
 
 # Booking duration limits for journee bookings
 DAY_MIN_HOURS = 3
@@ -311,7 +311,7 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
 
                     # Check if reservation overlaps with this date (timezone-aware)
                     # A reservation overlaps if it starts before the date ends AND ends after the date starts
-                    if res_start < date_end and res_end > date_start:
+                    if res_start <= date_end and res_end >= date_start:
                         reservations_by_date[date_str].append(reservation)
 
             def reservation_to_local_range(reservation):

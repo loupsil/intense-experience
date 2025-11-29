@@ -689,3 +689,111 @@ def get_booking_limits():
         'status': 'success'
     })
 
+@intense_experience_bp.route('/intense_experience-api/check-time-options-availability', methods=['POST'])
+def check_time_options_availability():
+    """Check if early check-in and late check-out options are available for a nuitée booking
+    
+    Early check-in (Arrivée anticipée) is only available if the corresponding journée suite 
+    does not have a booking from 17:00 to 18:00 on the check-in date.
+    
+    Late check-out (Départ tardif) is only available if the corresponding journée suite 
+    does not have a booking from 12:00 to 13:00 on the check-out date.
+    """
+    data = request.json
+    suite_id = data.get('suite_id')  # The nuitée suite ID
+    check_in_date = data.get('check_in_date')  # ISO format
+    check_out_date = data.get('check_out_date')  # ISO format
+    
+    if not all([suite_id, check_in_date, check_out_date]):
+        logger.error("Missing required parameters for time options availability check")
+        return jsonify({"error": "Missing required parameters", "status": "error"}), 400
+    
+    # Get the corresponding journée suite ID
+    journee_suite_id = SUITE_ID_MAPPING_REVERSE.get(suite_id)
+    
+    if not journee_suite_id:
+        logger.warning(f"No journée suite mapping found for nuitée suite {suite_id}")
+        # If there's no mapping, assume options are available (fallback behavior)
+        return jsonify({
+            "early_checkin_available": True,
+            "late_checkout_available": True,
+            "status": "success"
+        })
+    
+    logger.info(f"Checking time options availability for nuitée suite {suite_id} (journée equivalent: {journee_suite_id})")
+    
+    # Parse dates
+    check_in_dt = datetime.fromisoformat(check_in_date.replace('Z', '+00:00'))
+    check_out_dt = datetime.fromisoformat(check_out_date.replace('Z', '+00:00'))
+    
+    # Brussels timezone
+    brussels_tz = pytz.timezone('Europe/Brussels')
+    
+    # Convert to Brussels timezone for date extraction
+    check_in_brussels = check_in_dt.astimezone(brussels_tz)
+    check_out_brussels = check_out_dt.astimezone(brussels_tz)
+    
+    # Get the date parts
+    check_in_date_only = check_in_brussels.date()
+    check_out_date_only = check_out_brussels.date()
+    
+    # Create time slots to check in Brussels timezone
+    # Early check-in: check 17:00-18:00 on check-in date
+    early_checkin_start = brussels_tz.localize(datetime.combine(check_in_date_only, datetime.strptime('17:00', '%H:%M').time()))
+    early_checkin_end = brussels_tz.localize(datetime.combine(check_in_date_only, datetime.strptime('18:00', '%H:%M').time()))
+    
+    # Late check-out: check 12:00-13:00 on check-out date
+    late_checkout_start = brussels_tz.localize(datetime.combine(check_out_date_only, datetime.strptime('12:00', '%H:%M').time()))
+    late_checkout_end = brussels_tz.localize(datetime.combine(check_out_date_only, datetime.strptime('13:00', '%H:%M').time()))
+    
+    # Query reservations for a range covering both dates
+    # Add some buffer to ensure we capture all relevant reservations
+    query_start = (early_checkin_start - timedelta(hours=1)).isoformat()
+    query_end = (late_checkout_end + timedelta(hours=1)).isoformat()
+    
+    payload = {
+        "Client": "Intense Experience Booking",
+        "StartUtc": query_start,
+        "EndUtc": query_end,
+        "ServiceIds": [DAY_SERVICE_ID]  # Only check journée bookings
+    }
+    
+    result = make_mews_request("reservations/getAll", payload)
+    if result is None:
+        logger.error("Failed to get reservations from Mews API")
+        return jsonify({"error": "Failed to check availability", "status": "error"}), 500
+    
+    # Check for conflicts
+    early_checkin_available = True
+    late_checkout_available = True
+    
+    reservations = result.get("Reservations", [])
+    logger.info(f"Found {len(reservations)} journée reservations to check")
+    
+    for reservation in reservations:
+        # Only check reservations for the corresponding journée suite
+        if reservation.get('RequestedCategoryId') != journee_suite_id:
+            continue
+        
+        res_start = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
+        res_end = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+        
+        # Check if reservation overlaps with early check-in slot (17:00-18:00 on check-in date)
+        if not (res_end <= early_checkin_start or res_start >= early_checkin_end):
+            early_checkin_available = False
+            logger.info(f"Early check-in blocked by reservation from {res_start} to {res_end}")
+        
+        # Check if reservation overlaps with late check-out slot (12:00-13:00 on check-out date)
+        if not (res_end <= late_checkout_start or res_start >= late_checkout_end):
+            late_checkout_available = False
+            logger.info(f"Late check-out blocked by reservation from {res_start} to {res_end}")
+    
+    logger.info(f"Time options availability: early_checkin={early_checkin_available}, late_checkout={late_checkout_available}")
+    
+    return jsonify({
+        "early_checkin_available": early_checkin_available,
+        "late_checkout_available": late_checkout_available,
+        "journee_suite_id": journee_suite_id,
+        "status": "success"
+    })
+
