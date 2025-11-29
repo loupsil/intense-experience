@@ -120,6 +120,10 @@ export default {
     suitePricing: {
       type: Object,
       default: () => ({})
+    },
+    priceDisplayCalculator: {
+      type: Function,
+      default: null
     }
   },
   data() {
@@ -529,16 +533,23 @@ export default {
             calculation: `${hourlyRate}€ × ${actualHours}h`
           }
         } else {
-          // For nuitée, take the first price (daily rate) and multiply by number of nights
-          const numberOfNights = this.calculateNights()
-          console.log('TimeSelector nuitée calculation:', {
-            nightlyRate: suitePricing.Prices[0],
-            numberOfNights
-          })
+          // For nuitée, use shared pricing calculation logic
+          if (this.priceDisplayCalculator) {
+            const result = this.priceDisplayCalculator(suitePricing, startDate, endDate)
+            console.log('TimeSelector nuitée calculation using shared logic:', result)
+            return result
+          } else {
+            // Fallback to local logic if shared calculator not available
+            const numberOfNights = this.calculateNights()
+            console.log('TimeSelector nuitée calculation (fallback):', {
+              nightlyRate: suitePricing.Prices[0],
+              numberOfNights
+            })
 
-          return {
-            total: suitePricing.Prices[0] * numberOfNights,
-            calculation: `${suitePricing.Prices[0]}€ × ${numberOfNights} nights`
+            return {
+              total: suitePricing.Prices[0] * numberOfNights,
+              calculation: `${suitePricing.Prices[0]}€ × ${numberOfNights} nights`
+            }
           }
         }
       } else {

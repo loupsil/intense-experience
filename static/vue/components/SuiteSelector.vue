@@ -63,7 +63,7 @@
 
         <div class="suite-footer">
           <div class="pricing-info">
-            <span class="price-value">{{ getSuiteBasePrice(suite) }}€</span>
+            <span class="price-value">{{ getSuitePriceDisplay(suite) }}</span>
           </div>
         </div>
 
@@ -119,6 +119,10 @@ export default {
       default: null
     },
     pricingCalculator: {
+      type: Function,
+      default: null
+    },
+    priceDisplayCalculator: {
       type: Function,
       default: null
     },
@@ -245,6 +249,41 @@ export default {
         } else {
           // For nuitée, take the first price (daily rate)
           return categoryPrice.Prices[0]
+        }
+      }
+
+      // No pricing data available
+      return 'N/A'
+    },
+
+    getSuitePriceDisplay(suite) {
+      // Get price from API pricing data
+      const categoryPrice = this.suitePricing[suite.Id]
+      if (categoryPrice && categoryPrice.Prices && categoryPrice.Prices.length > 0) {
+        if (this.serviceType === 'journée') {
+          // For journée: show the total price
+          const total = categoryPrice.Prices.reduce((sum, price) => sum + price, 0)
+          const hours = categoryPrice.Prices.length
+          const hourlyRate = categoryPrice.Prices[0]
+          const actualHours = hours - 1
+          const correctedTotal = actualHours * hourlyRate
+
+          return `${correctedTotal}€`
+        } else {
+          // For nuitée: use shared pricing calculation logic
+          if (this.priceDisplayCalculator) {
+            const result = this.priceDisplayCalculator(categoryPrice, this.startDate, this.endDate)
+            if (result.calculation) {
+              return `${result.total}€ (${result.calculation})`
+            } else {
+              return `${result.total}€`
+            }
+          } else {
+            // Fallback to local logic if shared calculator not available
+            const numberOfNights = this.calculateNumberOfNights()
+            const total = categoryPrice.Prices[0] * numberOfNights
+            return `${total}€ (${numberOfNights}x${categoryPrice.Prices[0]}€)`
+          }
         }
       }
 

@@ -176,8 +176,9 @@
           :selected-dates="selectedBookingType === 'night' ? selectedDates : { start: null, end: null }"
           :date-availability="getDateAvailability(selectedDates.start)"
           :service="service"
-        :selected-suite="suiteForBooking"
+          :selected-suite="suiteForBooking"
           :suite-pricing="suitePricing"
+          :price-display-calculator="priceDisplayCalculator"
           @time-selected="handleTimeSelection"
           @book-suite="confirmSelection"
         />
@@ -231,6 +232,10 @@ export default {
     },
     suiteForBooking: {
       type: Object,
+      default: null
+    },
+    priceDisplayCalculator: {
+      type: Function,
       default: null
     }
   },

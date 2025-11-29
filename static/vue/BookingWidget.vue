@@ -95,6 +95,7 @@
           :selected-suite="selectedSuite"
           :suite-for-booking="suiteForBooking"
           :suite-pricing="suitePricing"
+          :price-display-calculator="calculateSuitePriceDisplay"
           @date-selected="handleDateSelection"
           @dates-confirmed="nextStep"
           @suite-deselected="handleSuiteDeselected"
@@ -139,6 +140,7 @@
           :pricing="suitePricing"
           :preselected-suite="preselectedSuite"
           :pricing-calculator="calculateSuitePricingFromData"
+          :price-display-calculator="calculateSuitePriceDisplay"
           @suite-selected="selectSuite"
           @pricing-updated="updateSuitePricing"
           @pricing-calculated="updatePricing"
@@ -608,11 +610,11 @@ export default {
             calculation: `${hourlyRate}€ × ${actualHours}h`
           }
         } else {
-          // For nuitée, take the first price (daily rate) and multiply by number of nights
-          const numberOfNights = this.calculateNumberOfNights(startDate, endDate)
+          // For nuitée: use shared pricing calculation logic
+          const pricingResult = this.calculateSuitePriceDisplay(suitePricing, startDate, endDate)
           return {
-            total: suitePricing.Prices[0] * numberOfNights,
-            calculation: `${suitePricing.Prices[0]}€ × ${numberOfNights} nights`
+            total: pricingResult.total,
+            calculation: pricingResult.calculation
           }
         }
       } else {
@@ -620,6 +622,81 @@ export default {
         return {
           total: 'N/A',
           calculation: ''
+        }
+      }
+    },
+
+    calculateSuitePriceDisplay(suitePricing, startDate, endDate) {
+      // Shared pricing calculation logic for night bookings
+      // This ensures consistent pricing display between SuiteSelector and BookingWidget
+      const numberOfNights = this.calculateNumberOfNights(startDate, endDate)
+
+      // For night bookings, check if we have individual prices for each night
+      // or if it's a single rate to be multiplied
+      const prices = suitePricing.Prices
+
+      if (prices.length === 1) {
+        // Single rate for all nights
+        const total = prices[0] * numberOfNights
+        if (numberOfNights === 1) {
+          return {
+            total: total,
+            calculation: ''
+          }
+        } else {
+          return {
+            total: total,
+            calculation: `${numberOfNights}x${prices[0]}€`
+          }
+        }
+      } else if (prices.length >= numberOfNights) {
+        // Individual prices for each night
+        const relevantPrices = prices.slice(0, numberOfNights)
+        const total = relevantPrices.reduce((sum, price) => sum + price, 0)
+
+        if (numberOfNights === 1) {
+          // Single night: don't show calculation details
+          return {
+            total: total,
+            calculation: ''
+          }
+        } else if (numberOfNights === 2) {
+          if (relevantPrices[0] === relevantPrices[1]) {
+            // Same price for both nights: show "2x{price}"
+            return {
+              total: total,
+              calculation: `2x${relevantPrices[0]}€`
+            }
+          } else {
+            // Different prices: show "price1 + price2"
+            return {
+              total: total,
+              calculation: `${relevantPrices[0]}€ + ${relevantPrices[1]}€`
+            }
+          }
+        } else {
+          // More than 2 nights: check if all prices are the same
+          const allSamePrice = relevantPrices.every(price => price === relevantPrices[0])
+          if (allSamePrice && numberOfNights > 1) {
+            return {
+              total: total,
+              calculation: `${numberOfNights}x${relevantPrices[0]}€`
+            }
+          } else {
+            // Different prices: show individual prices
+            const priceList = relevantPrices.map(price => `${price}€`).join(' + ')
+            return {
+              total: total,
+              calculation: priceList
+            }
+          }
+        }
+      } else {
+        // Fallback: multiply single price by number of nights
+        const total = prices[0] * numberOfNights
+        return {
+          total: total,
+          calculation: `${numberOfNights}x${prices[0]}€`
         }
       }
     },
@@ -696,6 +773,14 @@ export default {
       if (serviceType === 'nuitée') {
         return 'ed9391ac-b184-4876-8cc1-b3850108b8b0' // Tarif Suites nuitée
       } else if (serviceType === 'journée') {
+        // Check if it's a weekend journée
+        if (this.selectedDates.start) {
+          const date = new Date(this.selectedDates.start)
+          const dayOfWeek = date.getDay() // 0 = Sunday, 6 = Saturday
+          if (dayOfWeek === 0 || dayOfWeek === 6) {
+            return 'd0496fa0-6686-4614-8847-b3850108c537' // TARIF JOURNEE LE WEEKEND
+          }
+        }
         return 'c3c2109d-984a-4ad4-978e-b3850108b8ad' // TARIF JOURNEE EN SEMAINE
       }
       return null

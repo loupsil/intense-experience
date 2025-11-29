@@ -291,12 +291,21 @@ def get_pricing():
     # For night bookings, set time to 23:00:00.000Z
     # Rate ID for nuitée: 'ed9391ac-b184-4876-8cc1-b3850108b8b0'
     if rate_id == 'ed9391ac-b184-4876-8cc1-b3850108b8b0':
-        # Extract date part and append 23:00:00.000Z for night bookings
-        first_time_unit = start_date.split('T')[0] + 'T23:00:00.000Z'
-        last_time_unit = end_date.split('T')[0] + 'T23:00:00.000Z'
-        logger.info(f"PRICING: Nuitée detected - adjusting time units to 23:00:00.000Z")
-        logger.info(f"PRICING: Original start_date: {start_date}, adjusted: {first_time_unit}")
-        logger.info(f"PRICING: Original end_date: {end_date}, adjusted: {last_time_unit}")
+        # Extract date part, subtract 1 day, and append 23:00:00.000Z for night bookings
+        # This is how Mews API works - not sure why, but this -1 makes it work
+        start_date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        end_date_obj = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+
+        # Subtract 1 day to get the correct pricing dates
+        adjusted_start_date = start_date_obj - timedelta(days=1)
+        adjusted_end_date = end_date_obj - timedelta(days=1)
+
+        first_time_unit = adjusted_start_date.strftime('%Y-%m-%d') + 'T23:00:00.000Z'
+        last_time_unit = adjusted_end_date.strftime('%Y-%m-%d') + 'T23:00:00.000Z'
+
+        logger.info(f"PRICING: Nuitée detected - adjusting time units to 23:00:00.000Z with -1 day offset")
+        logger.info(f"PRICING: Original start_date: {start_date}, adjusted: {first_time_unit} (yesterday)")
+        logger.info(f"PRICING: Original end_date: {end_date}, adjusted: {last_time_unit} (yesterday)")
     else:
         # For day bookings, keep the original logic
         first_time_unit = start_date
