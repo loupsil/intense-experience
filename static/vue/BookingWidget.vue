@@ -174,7 +174,8 @@
         />
         <!-- Booking Summary - Mobile (inline) -->
         <div v-if="!showSidebar" class="booking-summary">
-          <h3>Summary</h3>
+          <h3>{{ formatDateRange(selectedDates.start, selectedDates.end) }}</h3>
+          <p v-if="bookingSubtitle" class="booking-subtitle">{{ bookingSubtitle }}</p>
           <div class="summary-item">
             <span>{{ selectedSuite?.Names['fr-FR'] }}</span>
             <span>{{ getSuitePriceInfo().price }}€ <span class="calculation" v-if="getSuitePriceInfo().calculation">({{ getSuitePriceInfo().calculation }})</span></span>
@@ -274,7 +275,8 @@
     <!-- Booking Summary - Desktop Right Side -->
     <div v-if="showSidebar" class="booking-summary-sidebar">
       <div class="booking-summary">
-        <h3>Summary</h3>
+        <h3>{{ formatDateRange(selectedDates.start, selectedDates.end) }}</h3>
+        <p v-if="bookingSubtitle" class="booking-subtitle">{{ bookingSubtitle }}</p>
         <div class="summary-item">
           <span>{{ selectedSuite?.Names['fr-FR'] }}</span>
           <span>{{ getSuitePriceInfo().price }}€ <span class="calculation" v-if="getSuitePriceInfo().calculation">({{ getSuitePriceInfo().calculation }})</span></span>
@@ -404,6 +406,25 @@ export default {
 
     suiteForBooking() {
       return this.hasActiveSuiteSelection ? this.selectedSuite : null
+    },
+
+    bookingSubtitle() {
+      if (this.getServiceType() === 'nuitée') {
+        const arrivalTime = this.hasArriveeAnticipee ? '18h' : '19h'
+        const departureTime = this.hasDepartTardif ? '12h' : '10h'
+        return `Arrival: ${arrivalTime} - Departure: ${departureTime}`
+      } else if (this.getServiceType() === 'journée' && this.selectedDates.start && this.selectedDates.end) {
+        const startTime = new Date(this.selectedDates.start).toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+        const endTime = new Date(this.selectedDates.end).toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+        return `Arrival: ${startTime} - Departure: ${endTime}`
+      }
+      return null
     }
   },
   watch: {
@@ -1052,6 +1073,12 @@ export default {
       if (!start || !end) return ''
       const startDate = new Date(start).toLocaleDateString('fr-FR')
       const endDate = new Date(end).toLocaleDateString('fr-FR')
+
+      // For journée bookings (same day), only show the date once
+      if (startDate === endDate) {
+        return startDate
+      }
+
       return `${startDate} - ${endDate}`
     },
 
@@ -1343,6 +1370,14 @@ h2 {
   border-radius: 8px;
   margin: 20px 0;
   transition: background-color 0.5s ease;
+}
+
+.booking-subtitle {
+  font-size: 14px;
+  color: var(--secondary-text-color, #666);
+  margin: 5px 0 15px 0;
+  font-weight: 500;
+  text-align: left;
 }
 
 .summary-item {
