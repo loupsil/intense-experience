@@ -71,8 +71,8 @@
           <i :class="selectedSuite?.Id === suite.Id ? 'fas fa-check-circle' : 'far fa-circle'"></i>
         </div>
 
-        <!-- Gold glitter animation for selected suite -->
-        <div v-if="selectedSuite?.Id === suite.Id" class="gold-glitter-overlay">
+        <!-- Gold glitter animation for selected suite (only for night bookings) -->
+        <div v-if="selectedSuite?.Id === suite.Id && bookingType === 'night'" class="gold-glitter-overlay">
           <img 
             :src="glitterGifUrl"
             alt="Gold glitter effect"
