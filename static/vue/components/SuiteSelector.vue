@@ -70,6 +70,16 @@
         <div class="selection-indicator">
           <i :class="selectedSuite?.Id === suite.Id ? 'fas fa-check-circle' : 'far fa-circle'"></i>
         </div>
+
+        <!-- Gold glitter animation for selected suite -->
+        <div v-if="selectedSuite?.Id === suite.Id" class="gold-glitter-overlay">
+          <img 
+            :src="glitterGifUrl"
+            alt="Gold glitter effect"
+            class="glitter-gif"
+            @error="handleGlitterError"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -151,7 +161,8 @@ export default {
       suitePriceCalculation: '', // Cache the calculation string to prevent flicker
       loading: false,
       isLoadingSuites: false,
-      _isMounted: false
+      _isMounted: false,
+      glitterGifUrl: '/static/images/glitter2.gif' // Gold glitter GIF
     }
   },
   watch: {
@@ -499,6 +510,12 @@ export default {
         price: this.calculatedPricing.total,
         calculation: this.suitePriceCalculation
       }
+    },
+
+    handleGlitterError(event) {
+      // Fallback to alternative gold glitter GIF if the first one fails
+      console.warn('Primary glitter GIF failed to load, trying fallback')
+      event.target.src = 'https://media.giphy.com/media/xTiTnLZ2dqfYWY9ybm/giphy.gif'
     }
   }
 }
@@ -772,6 +789,37 @@ export default {
 
   .suite-highlights {
     justify-content: center;
+  }
+}
+
+/* Gold glitter overlay for selected suite */
+.gold-glitter-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  border-radius: 12px;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.glitter-gif {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.4;
+  mix-blend-mode: screen;
+  animation: glitterPulse 3s ease-in-out infinite;
+}
+
+@keyframes glitterPulse {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.5;
   }
 }
 </style>
