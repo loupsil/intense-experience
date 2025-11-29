@@ -53,6 +53,10 @@ NIGHT_CHECK_OUT_HOUR = 10  # 10:00 (10:00 AM)
 SUITE_ID_MAPPING = {
     # Intense Suite
     "e4706d3a-2a06-4cb7-a449-b3850108c66f": "f867b5c6-f62d-451c-96ec-b3850108c66f",  # journee -> nuitee
+    # Gaia Suite
+    "f723bd5a-04fe-479c-bab4-b3850108c66f": "3872869e-6278-4c64-aea8-b3850108c66f",  # journee -> nuitee
+    # Extase Suite
+    "68b87fe5-7b78-4067-b5e7-b3850108c66f": "0d535116-b1db-476e-8bff-b3850108c66f",  # journee -> nuitee
 }
 
 # Reverse mapping for convenience
