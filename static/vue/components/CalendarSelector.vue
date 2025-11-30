@@ -174,7 +174,7 @@
           :booking-type="selectedBookingType"
           :selected-date="selectedBookingType === 'day' ? selectedDates.start : null"
           :selected-dates="selectedBookingType === 'night' ? selectedDates : { start: null, end: null }"
-          :date-availability="getDateAvailability(selectedDates.start)"
+          :date-availability="getDateAvailability(selectedDates.start, this.selectedSuite ? this.selectedSuiteAvailability : null)"
           :service="service"
           :selected-suite="suiteForBooking"
           :suite-pricing="suitePricing"
@@ -364,8 +364,8 @@ export default {
         service_id: this.service.Id,
         dates,
         booking_type: this.selectedBookingType,
-        suite_id: null
-      }
+        suite_id: null // always null for generic access point
+         }
 
       const aggregatedRequest = this.performBulkAvailabilityRequest(
         endpoint,
@@ -374,13 +374,13 @@ export default {
         { fallbackOnError: true }
       )
 
-      const shouldFetchSuiteSpecific = this.selectedBookingType === 'night' && this.selectedSuite
+      const shouldFetchSuiteSpecific = this.selectedSuite
       let suiteSpecificRequest = null
 
       if (shouldFetchSuiteSpecific) {
         const suiteRequestData = {
           ...baseRequestData,
-          suite_id: this.selectedSuite.Id
+          suite_id: this.selectedSuite.Id // Pass the selected suite ID to determine minimum duration for days and handle golden cell logic (also from the back end ) for night
         }
         // Clear suite-specific data while loading to avoid stale highlights
         this.selectedSuiteAvailability = {}

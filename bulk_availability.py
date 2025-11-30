@@ -3,45 +3,30 @@ from datetime import datetime, timedelta
 import pytz
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# Import all configuration from shared config file
+from config import (
+    ENTERPRISE_ID,
+    DAY_SERVICE_ID,
+    NIGHT_SERVICE_ID,
+    CLEANING_BUFFER_HOURS,
+    DAY_MIN_HOURS,
+    DAY_MAX_HOURS,
+    SPECIAL_MIN_DURATION_SUITES,
+    SPECIAL_MIN_HOURS,
+    ARRIVAL_TIMES,
+    DEPARTURE_TIMES,
+    NIGHT_CHECK_IN_HOUR,
+    NIGHT_CHECK_OUT_HOUR
+)
+
 # Configure logging
 logger = logging.getLogger(__name__)
-
-# Mews API configuration
-ENTERPRISE_ID = "c390a691-e9a0-4aa0-860c-b3850108ab4c"
-
-# Service IDs
-DAY_SERVICE_ID = "86fcc6a7-75ce-457a-a425-b3850108b6bf"  # JOURNEE
-NIGHT_SERVICE_ID = "7ba0b732-93cc-477a-861d-b3850108b730"  # NUITEE
-
-# Default cleaning buffer in hours
-CLEANING_BUFFER_HOURS = 1
-
-# Booking duration limits for journee bookings
-DAY_MIN_HOURS = 3
-DAY_MAX_HOURS = 6
-
-# Special minimum duration suites (Chambres with 2-hour minimum instead of 3)
-SPECIAL_MIN_DURATION_SUITES = [
-    "f5539e51-9db0-4082-b87e-b3850108c66f",  # Chambre EUPHORYA
-    "78a614b1-199d-4608-ab89-b3850108c66f",  # Chambre IGNIS
-    "67ece5a2-65e2-43c5-9079-b3850108c66f",  # Chambre KAIROS
-    "1113bcbe-ad5f-49c7-8dc0-b3850108c66f",  # Chambre AETHER
-]
-SPECIAL_MIN_HOURS = 2
-
-# Arrival and departure times for journee bookings
-ARRIVAL_TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
-DEPARTURE_TIMES = ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00']
-
-# Default check-in and check-out hours for nuitée bookings
-NIGHT_CHECK_IN_HOUR = 19  # 19:00 (7:00 PM)
-NIGHT_CHECK_OUT_HOUR = 10  # 10:00 (10:00 AM)
 
 def check_bulk_availability_journee(make_mews_request_func, data):
     """Check availability for day bookings (journée) - considers reservations from both day and night services - shows date as unavailable if no valid time slots remain"""
     service_id = data.get('service_id')
     dates = data.get('dates')  # List of ISO date strings
-    suite_id = data.get('suite_id')  # Optional: filter by specific suite
+    selected_suite_id = data.get('suite_id')  # Optional: used to determine minimum duration (not for filtering)
 
     if not all([service_id, dates]) or len(dates) == 0:
         logger.error("Missing required parameters")
@@ -63,16 +48,13 @@ def check_bulk_availability_journee(make_mews_request_func, data):
     all_suites = [cat for cat in suites_result["ResourceCategories"]
                   if cat.get("Type") in ["Suite", "Room"] and cat.get("IsActive")]
 
-    # If a specific suite is selected, filter to only that suite
-    if suite_id:
-        all_suites = [suite for suite in all_suites if suite["Id"] == suite_id]
-        if not all_suites:
-            logger.warning(f"Selected suite {suite_id} not found in available suites")
-            return {"error": f"Selected suite {suite_id} not available", "status": "error"}, 400
+    # NOTE: We don't filter by suite_id here because we need to check ALL suites
+    # to compute partial availability (golden cells). The selected_suite_id is only
+    # used to determine the minimum duration for that specific suite.
 
     suite_ids = [suite["Id"] for suite in all_suites]
 
-    logger.info(f"Found {len(suite_ids)} active suites")
+    logger.info(f"Found {len(suite_ids)} active suites (selected_suite_id: {selected_suite_id})")
 
     # Sort dates
     sorted_dates = sorted(set(dates))
@@ -123,8 +105,18 @@ def check_bulk_availability_journee(make_mews_request_func, data):
             suite_availability = {}
 
             for suite_id in suite_ids:
-                # Determine minimum hours based on suite
-                min_hours = SPECIAL_MIN_HOURS if suite_id in SPECIAL_MIN_DURATION_SUITES else DAY_MIN_HOURS
+                # Determine minimum hours based on the suite being checked:
+                # - Each suite uses its inherent minimum (2h for special Chambres, 3h for others)
+                # - UNLESS no suite is selected (golden cell scenario), then force 3h minimum for ALL
+                if selected_suite_id is None:
+                    # No suite selected (golden cell): use 3-hour minimum for all suites
+                    min_hours = DAY_MIN_HOURS
+                elif suite_id in SPECIAL_MIN_DURATION_SUITES:
+                    # This suite is a special Chambre: use 2-hour minimum
+                    min_hours = SPECIAL_MIN_HOURS
+                else:
+                    # Regular suite: use 3-hour minimum
+                    min_hours = DAY_MIN_HOURS
                 
                 # Generate all possible time slot combinations
                 available_slots = []
