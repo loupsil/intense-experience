@@ -217,10 +217,11 @@
 
       <!-- Step 6: Confirmation -->
       <div v-if="currentStep === 6" class="step">
-        <div class="confirmation-message">
+        <!-- Day booking confirmation -->
+        <div v-if="bookingType === 'day'" class="confirmation-message">
           <i class="fas fa-check-circle"></i>
-          <h2>Reservation confirmed!</h2>
-          <p>Your reservation has been created successfully.</p>
+          <h2>Reservation pre-registered!</h2>
+          <p>Your reservation request has been received. Please note that the payment should be completed now for your reservation to be fully validated.</p>
           <div class="reservation-details">
             <h3>Your reservation details</h3>
             <div class="detail-item">
@@ -250,13 +251,51 @@
           </div>
 
           <div class="payment-choice">
-            <p>What would you like to do now?</p>
             <div class="choice-buttons">
               <button class="pay-now-btn" @click="nextStep">
                 Pay now
               </button>
-              <button class="home-btn" @click="resetBooking">
-                Back to home
+            </div>
+          </div>
+        </div>
+
+        <!-- Night booking confirmation -->
+        <div v-else class="confirmation-message">
+          <i class="fas fa-check-circle"></i>
+          <h2>Reservation confirmed!</h2>
+          <p>Your reservation has been created successfully. Please note that payment of 50% is required for your reservation to be fully validated.</p>
+          <div class="reservation-details">
+            <h3>Your reservation details</h3>
+            <div class="detail-item">
+              <span class="label">Service:</span>
+              <span>{{ selectedService?.Names['fr-FR'] }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="label">Suite:</span>
+              <span>{{ selectedSuite?.Names['fr-FR'] }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="label">Dates:</span>
+              <span>{{ formatDateRange(selectedDates.start, selectedDates.end) }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="label">Client:</span>
+              <span>{{ customer?.FirstName }} {{ customer?.LastName }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="label">Email:</span>
+              <span>{{ customer?.Email }}</span>
+            </div>
+            <div class="detail-item total">
+              <span class="label">Total:</span>
+              <span>{{ typeof pricing.total === 'number' ? (pricing.total + pricing.options) + '€' : pricing.total }}</span>
+            </div>
+          </div>
+
+          <div class="payment-choice">
+            <div class="choice-buttons">
+              <button class="pay-now-btn" @click="nextStep">
+                {{ bookingType === 'night' ? 'Pay 50% now' : 'Pay now' }}
               </button>
             </div>
           </div>
@@ -267,7 +306,8 @@
       <div v-if="currentStep === 7" class="step">
         <PaymentComponent
           :reservation="reservation"
-          :amount="typeof pricing.total === 'number' ? pricing.total + pricing.options : 0"
+          :amount="getPaymentAmount()"
+          :booking-type="bookingType"
           @reset-booking="resetBooking"
         />
       </div>
@@ -1195,6 +1235,18 @@ export default {
     handleProductsLoaded(products) {
       // Update available products when loaded by OptionsSelector
       this.availableProducts = products
+    },
+
+    getPaymentAmount() {
+      const totalAmount = typeof this.pricing.total === 'number' ? this.pricing.total + this.pricing.options : 0
+      
+      // For night bookings, charge half the amount
+      if (this.bookingType === 'night') {
+        return totalAmount / 2
+      }
+      
+      // For day bookings, charge full amount
+      return totalAmount
     }
   }
 }

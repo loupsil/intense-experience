@@ -4,12 +4,12 @@
       <div class="redirect-icon">
         <i class="fas fa-external-link-alt"></i>
       </div>
-      <h2>Paiement en cours...</h2>
-      <p>Le paiement se déroule dans l'autre onglet.</p>
+      <h2>Payment in progress...</h2>
+      <p>Payment is being processed in the other tab.</p>
       <div class="redirect-info">
-        <p>Une fois votre paiement confirmé sur la page de paiement, cliquez sur le bouton ci-dessous pour revenir sur le site.</p>
+        <p>Once your payment is confirmed on the payment page, click the button below to return to the site.</p>
         <button class="payment-complete-btn" @click="onPaymentCompleted">
-          J'ai terminé le paiement
+          I've completed the payment
         </button>
       </div>
     </div>
@@ -18,15 +18,15 @@
       <div class="error-icon">
         <i class="fas fa-exclamation-triangle"></i>
       </div>
-      <h2>Erreur de paiement</h2>
+      <h2>Payment error</h2>
       <p>{{ errorMessage }}</p>
       <div class="error-actions">
         <button class="retry-btn" @click="createPaymentRequest">
           <i class="fas fa-redo"></i>
-          Réessayer
+          Retry
         </button>
         <button class="home-btn" @click="goHome">
-          Retour à l'accueil
+          Back to home
         </button>
       </div>
     </div>
@@ -35,24 +35,24 @@
       <div class="ready-icon">
         <i class="fas fa-credit-card"></i>
       </div>
-      <h2>Paiement prêt</h2>
-      <p>Votre demande de paiement a été créée. Cliquez sur le bouton ci-dessous pour procéder au paiement.</p>
+      <h2>Payment ready</h2>
+      <p>Your payment request has been created. Click the button below to proceed with payment.</p>
 
       <div class="payment-details">
-        <h3>Détails du paiement</h3>
+        <h3>Payment details</h3>
         <div class="detail-item">
-          <span>Référence de réservation:</span>
+          <span>Reservation reference:</span>
           <strong>{{ reservation?.Identifier }}</strong>
         </div>
         <div class="detail-item">
-          <span>Montant à payer:</span>
+          <span>Amount to pay:</span>
           <strong>{{ amount }}€</strong>
         </div>
       </div>
 
       <div class="payment-actions">
         <button class="pay-now-btn" @click="openPayment">
-          Payer maintenant
+          Pay now
         </button>
       </div>
     </div>
@@ -62,8 +62,8 @@
       <div class="init-icon">
         <i class="fas fa-credit-card"></i>
       </div>
-      <h2>Préparation du paiement</h2>
-      <p>Création de votre demande de paiement...</p>
+      <h2>Preparing payment</h2>
+      <p>Creating your payment request...</p>
       <div class="progress-bar">
         <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
       </div>
@@ -82,6 +82,10 @@ export default {
     amount: {
       type: Number,
       required: true
+    },
+    bookingType: {
+      type: String,
+      default: 'day'
     }
   },
   data() {
@@ -130,7 +134,7 @@ export default {
               Type: "Payment",
               Reason: "PaymentCardMissing",
               ExpirationUtc: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
-              Description: `Paiement pour la réservation ${this.reservation.Identifier}`,
+              Description: `Payment for reservation ${this.reservation.Identifier}`,
               ReservationId: this.reservation.Id
             }
           ]
@@ -159,7 +163,7 @@ export default {
         this.paymentRequestId = paymentRequestId
 
         // Construct payment URL
-        this.paymentUrl = `https://app.mews-demo.com/navigator/payment-requests/detail/${paymentRequestId}?ccy=EUR&language=fr-FR`
+        this.paymentUrl = `https://app.mews-demo.com/navigator/payment-requests/detail/${paymentRequestId}?ccy=EUR&language=en-US`
 
         // Complete progress
         clearInterval(this.progressInterval)
@@ -172,7 +176,7 @@ export default {
         console.error('Error creating payment request:', error)
         clearInterval(this.progressInterval)
         this.hasError = true
-        this.errorMessage = 'Une erreur est survenue lors de la création de la demande de paiement. Veuillez réessayer.'
+        this.errorMessage = 'An error occurred while creating the payment request. Please try again.'
       }
     },
 
