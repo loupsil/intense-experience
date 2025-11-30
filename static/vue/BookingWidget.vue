@@ -38,20 +38,10 @@
       </div>
 
       <!-- Step 1: Service Selection -->
-      <div v-if="currentStep === 1" class="step">
-        <h2>Choisissez votre expérience</h2>
-        
+      <div v-if="currentStep === 1" class="step">        
         <!-- Loading state -->
         <div v-if="loadingServices" class="service-loading">
           <div class="spinner"></div>
-          <p>Chargement des services disponibles...</p>
-        </div>
-
-        <!-- Error state -->
-        <div v-else-if="servicesError" class="service-error">
-          <i class="fas fa-exclamation-triangle"></i>
-          <p>{{ servicesError }}</p>
-          <button class="retry-btn" @click="loadServices">Réessayer</button>
         </div>
 
         <!-- Services loaded -->
@@ -74,7 +64,6 @@
         <!-- No services available -->
         <div v-else class="service-empty">
           <i class="fas fa-inbox"></i>
-          <p>Aucun service disponible pour le moment.</p>
         </div>
 
         <button
@@ -83,7 +72,7 @@
           :disabled="!selectedService"
           @click="nextStep"
         >
-          Continuer
+          Next
         </button>
       </div>
 
@@ -102,7 +91,7 @@
           @suite-reselected="handleSuiteReselected"
         />
         <div class="step-navigation">
-          <button class="prev-btn" @click="prevStep">Back</button>
+          <button v-if="currentStep !== 2" class="prev-btn" @click="prevStep">Back</button>
         </div>
       </div>
 
@@ -1821,6 +1810,7 @@ h2 {
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
+  display: none;
   font-weight: 600;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   transition: all 0.2s ease;

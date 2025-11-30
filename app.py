@@ -20,6 +20,15 @@ def index():
     # Parse URL parameters for different entry points
     suite_id = request.args.get('suite_id')
     service_id = request.args.get('service_id')
+    
+    # If service_id is not provided, redirect with default service_id
+    if not service_id:
+        service_id = '7ba0b732-93cc-477a-861d-b3850108b730'
+        params = {'service_id': service_id}
+        if suite_id:
+            params['suite_id'] = suite_id
+        query_string = '&'.join([f'{k}={v}' for k, v in params.items()])
+        return redirect(f'/?{query_string}')
 
     # Pass parameters to template for JavaScript access
     return render_template('index.html', suite_id=suite_id, service_id=service_id)
