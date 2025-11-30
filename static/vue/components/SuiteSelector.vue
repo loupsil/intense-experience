@@ -37,7 +37,10 @@
               :src="getCurrentImageUrl(suite.Id)"
               :alt="suite.Names['fr-FR'] || suite.Name"
               class="suite-img"
-              :class="{ 'clickable': getImageCount(suite.Id) > 1 }"
+              :class="{ 
+                'clickable': getImageCount(suite.Id) > 1,
+                'grayscale': !suiteAvailability[suite.Id]
+              }"
               @click="cycleSuiteImage(suite.Id)"
             />
             <!-- Image indicators for multiple images -->
@@ -596,9 +599,11 @@ export default {
 }
 
 .suite-card.unavailable {
-  border-color: #dc3545;
-  opacity: 0.7;
+  border-color: #999;
   cursor: not-allowed;
+  background: #808080 !important;
+  color: #e0e0e0 !important;
+  opacity: 0.5;
 }
 
 .suite-card.selected {
@@ -617,6 +622,13 @@ export default {
 .suite-header h3 {
   margin: 0;
   color: var(--suite-card-text, #333);
+}
+
+.suite-card.unavailable .suite-header h3,
+.suite-card.unavailable .suite-description,
+.suite-card.unavailable .price-value,
+.suite-card.unavailable .selection-indicator {
+  color: #e0e0e0 !important;
 }
 
 .availability-badge span {
@@ -668,6 +680,11 @@ export default {
 
 .suite-img.clickable:hover {
   opacity: 0.9;
+}
+
+.suite-img.grayscale {
+  filter: grayscale(100%);
+  opacity: 0.6;
 }
 
 .image-indicators {
