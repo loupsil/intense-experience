@@ -798,12 +798,34 @@ export default {
       }
 
       if (this.selectedBookingType === 'day') {
-        // For day bookings, select a single day
-        this.selectedDates = {
-          start: new Date(date),
-          end: new Date(date)
+        // For day bookings, select a single day but preserve previously selected times
+        const previousStartTime = this.selectedDates.start ? {
+          hours: this.selectedDates.start.getHours(),
+          minutes: this.selectedDates.start.getMinutes()
+        } : null
+        
+        const previousEndTime = this.selectedDates.end ? {
+          hours: this.selectedDates.end.getHours(),
+          minutes: this.selectedDates.end.getMinutes()
+        } : null
+
+        const newStartDate = new Date(date)
+        const newEndDate = new Date(date)
+
+        // Preserve previously selected times if they exist and are not midnight
+        if (previousStartTime && (previousStartTime.hours !== 0 || previousStartTime.minutes !== 0)) {
+          newStartDate.setHours(previousStartTime.hours, previousStartTime.minutes, 0, 0)
         }
-        // Note: Don't set default times here - TimeSelector will handle time selection
+        
+        if (previousEndTime && (previousEndTime.hours !== 0 || previousEndTime.minutes !== 0)) {
+          newEndDate.setHours(previousEndTime.hours, previousEndTime.minutes, 0, 0)
+        }
+
+        this.selectedDates = {
+          start: newStartDate,
+          end: newEndDate
+        }
+        // Note: TimeSelector will validate and potentially clear times if they're unavailable on the new date
 
         // Check if this is a partially available date (selected suite unavailable, but other suites available)
         // If so, we need to clear the suite selection
@@ -823,8 +845,21 @@ export default {
           await this.fetchBulkAvailability([dateStr])
         }
 
-        // For day bookings, don't emit date-selected until times are selected
-        // This prevents premature pricing calculation
+        // For day bookings, emit date-selected if times have been preserved from previous selection
+        // This ensures pricing is recalculated when the date changes
+        // TimeSelector will validate if these times are still available on the new date
+        const hasTimeSelection = previousStartTime && previousEndTime && 
+                                (previousStartTime.hours !== 0 || previousStartTime.minutes !== 0) &&
+                                (previousEndTime.hours !== 0 || previousEndTime.minutes !== 0)
+        
+        if (hasTimeSelection) {
+          console.log('CalendarSelector: Date changed for day booking with preserved times, emitting date-selected for pricing update')
+          this.$emit('date-selected', {
+            start: this.selectedDates.start.toISOString(),
+            end: this.selectedDates.end.toISOString(),
+            type: this.selectedBookingType
+          })
+        }
       }
     },
 

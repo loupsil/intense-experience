@@ -20,6 +20,15 @@ CLEANING_BUFFER_HOURS = 1
 DAY_MIN_HOURS = 3
 DAY_MAX_HOURS = 6
 
+# Special minimum duration suites (Chambres with 2-hour minimum instead of 3)
+SPECIAL_MIN_DURATION_SUITES = [
+    "f5539e51-9db0-4082-b87e-b3850108c66f",  # Chambre EUPHORYA
+    "78a614b1-199d-4608-ab89-b3850108c66f",  # Chambre IGNIS
+    "67ece5a2-65e2-43c5-9079-b3850108c66f",  # Chambre KAIROS
+    "1113bcbe-ad5f-49c7-8dc0-b3850108c66f",  # Chambre AETHER
+]
+SPECIAL_MIN_HOURS = 2
+
 # Arrival and departure times for journee bookings
 ARRIVAL_TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
 DEPARTURE_TIMES = ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00']
@@ -114,6 +123,9 @@ def check_bulk_availability_journee(make_mews_request_func, data):
             suite_availability = {}
 
             for suite_id in suite_ids:
+                # Determine minimum hours based on suite
+                min_hours = SPECIAL_MIN_HOURS if suite_id in SPECIAL_MIN_DURATION_SUITES else DAY_MIN_HOURS
+                
                 # Generate all possible time slot combinations
                 available_slots = []
 
@@ -124,8 +136,8 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                         dep_hour = int(departure_time.split(':')[0])
                         duration = dep_hour - arr_hour
 
-                        # Allow durations from 1 hour up to max, let frontend enforce suite-specific minimum rules
-                        if duration < 1 or duration > DAY_MAX_HOURS:
+                        # Check if duration meets minimum and maximum requirements
+                        if duration < min_hours or duration > DAY_MAX_HOURS:
                             continue
 
                         # Create datetime objects for this slot (timezone-aware to match reservations)
