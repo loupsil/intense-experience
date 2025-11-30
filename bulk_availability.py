@@ -124,8 +124,8 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                         dep_hour = int(departure_time.split(':')[0])
                         duration = dep_hour - arr_hour
 
-                        # Check if duration is within limits
-                        if duration < DAY_MIN_HOURS or duration > DAY_MAX_HOURS:
+                        # Allow durations from 1 hour up to max, let frontend enforce suite-specific minimum rules
+                        if duration < 1 or duration > DAY_MAX_HOURS:
                             continue
 
                         # Create datetime objects for this slot (timezone-aware to match reservations)

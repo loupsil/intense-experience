@@ -134,16 +134,26 @@ export default {
         day_min_hours: null,
         day_max_hours: null
       },
+      specialMinDurationSuites: [],
+      specialMinHours: null,
       limitsLoaded: false,
       pricingLoading: false
     }
   },
   computed: {
+    effectiveMinHours() {
+      // Use special minimum hours if the selected suite is in the special list
+      if (this.selectedSuite && this.specialMinDurationSuites.includes(this.selectedSuite.Id)) {
+        return this.specialMinHours || this.bookingLimits.day_min_hours
+      }
+      return this.bookingLimits.day_min_hours
+    },
+    
     canBook() {
       if (this.bookingType === 'day') {
         const hasSelection = this.selectedDate && this.selectedArrival && this.selectedDeparture && this.limitsLoaded
         const duration = this.calculateHours()
-        const isValidDuration = duration >= this.bookingLimits.day_min_hours && duration <= this.bookingLimits.day_max_hours
+        const isValidDuration = duration >= this.effectiveMinHours && duration <= this.bookingLimits.day_max_hours
         return hasSelection && isValidDuration
       } else {
         // For night bookings, check that dates are selected and number of nights doesn't exceed 2
@@ -163,8 +173,8 @@ export default {
     validationMessage() {
       if (this.bookingType === 'day' && this.selectedArrival && this.selectedDeparture && this.limitsLoaded) {
         const duration = this.calculateHours()
-        if (duration < this.bookingLimits.day_min_hours) {
-          return `Minimum duration: ${this.bookingLimits.day_min_hours} hours`
+        if (duration < this.effectiveMinHours) {
+          return `Minimum duration: ${this.effectiveMinHours} hours`
         } else if (duration > this.bookingLimits.day_max_hours) {
           return `Maximum duration: ${this.bookingLimits.day_max_hours} hours`
         }
@@ -259,7 +269,13 @@ export default {
       this.emitTimeSelection()
     },
     selectedDate: {
-      handler() {
+      handler(newVal) {
+        console.log('TimeSelector selectedDate watcher:', { 
+          newVal, 
+          selectedSuite: this.selectedSuite,
+          dateAvailability: this.dateAvailability
+        })
+        
         // Reset selections if currently selected times are now unavailable
         if (this.selectedArrival && this.isArrivalTimeDisabled(this.selectedArrival)) {
           this.selectedArrival = ''
@@ -298,6 +314,10 @@ export default {
     selectedSuite: {
       handler(newVal, oldVal) {
         console.log('TimeSelector selectedSuite changed:', { newVal, oldVal })
+        // Refetch booking limits when suite changes to get suite-specific minimum duration
+        if (newVal && newVal.Id !== oldVal?.Id) {
+          this.fetchBookingLimits()
+        }
       },
       immediate: true
     },
@@ -332,12 +352,21 @@ export default {
 
     async fetchBookingLimits() {
       try {
-        const response = await fetch('/intense_experience-api/booking-limits')
+        // Include suite_id in the request if available
+        let url = '/intense_experience-api/booking-limits'
+        if (this.selectedSuite && this.selectedSuite.Id) {
+          url += `?suite_id=${encodeURIComponent(this.selectedSuite.Id)}`
+        }
+
+        const response = await fetch(url)
         const data = await response.json()
+
         if (data.status === 'success' && data.booking_limits) {
           this.bookingLimits = data.booking_limits
           this.arrivalTimes = data.arrival_times || []
           this.departureTimes = data.departure_times || []
+          this.specialMinDurationSuites = data.special_min_duration_suites || []
+          this.specialMinHours = data.special_min_hours || null
           this.limitsLoaded = true
         }
       } catch (error) {
@@ -424,6 +453,7 @@ export default {
 
     isDepartureTimeDisabled(departureTime) {
       if (this.bookingType !== 'day' || !this.dateAvailability || !this.dateAvailability.suite_availability) {
+        console.log('isDepartureTimeDisabled early return:', { bookingType: this.bookingType, hasDateAvailability: !!this.dateAvailability })
         return false
       }
 
@@ -431,6 +461,16 @@ export default {
       if (this.selectedSuite) {
         const suiteId = this.selectedSuite.Id
         const slots = this.dateAvailability.suite_availability[suiteId]
+        
+        console.log('isDepartureTimeDisabled for suite:', {
+          suiteId,
+          departureTime,
+          hasSlots: !!slots,
+          slotsCount: slots?.length,
+          selectedArrival: this.selectedArrival,
+          effectiveMinHours: this.effectiveMinHours
+        })
+        
         if (!slots) {
           return true
         }
@@ -438,27 +478,61 @@ export default {
         // If no arrival time selected, check if this departure time is used in any available slot for this suite
         if (!this.selectedArrival) {
           const hasSlotWithThisDeparture = slots.some(slot => slot.departure === departureTime)
+          console.log('No arrival selected, checking departure:', { departureTime, hasSlotWithThisDeparture })
           return !hasSlotWithThisDeparture
         }
 
-        // If arrival time is selected, check if this combination is available for this suite
+        // If arrival time is selected, check if this combination is available AND meets duration requirements
         const hasMatchingSlot = slots.some(slot =>
           slot.arrival === this.selectedArrival && slot.departure === departureTime
         )
-        return !hasMatchingSlot
+        
+        console.log('Checking slot availability:', { 
+          arrival: this.selectedArrival, 
+          departure: departureTime, 
+          hasMatchingSlot,
+          allSlots: slots 
+        })
+        
+        if (!hasMatchingSlot) {
+          return true // Combination not available
+        }
+
+        // Additional duration check when arrival is selected
+        if (this.limitsLoaded) {
+          const [arrHour] = this.selectedArrival.split(':').map(Number)
+          const [depHour] = departureTime.split(':').map(Number)
+          const duration = Math.max(0, depHour - arrHour)
+
+          console.log('Duration check:', { duration, effectiveMinHours: this.effectiveMinHours })
+
+          // Disable if duration is less than the effective minimum hours
+          if (duration < this.effectiveMinHours) {
+            return true
+          }
+        }
+
+        return false // Combination is available and meets duration requirements
       }
 
       // If no suite is selected, check across all suites
+      console.log('No suite selected, checking across all suites:', {
+        availabilitySuites: Object.keys(this.dateAvailability.suite_availability),
+        selectedArrival: this.selectedArrival,
+        departureTime
+      })
 
       // If no arrival time selected, check if this departure time is used in any available slot
       if (!this.selectedArrival) {
         for (const suiteId in this.dateAvailability.suite_availability) {
           const slots = this.dateAvailability.suite_availability[suiteId]
           const hasSlotWithThisDeparture = slots.some(slot => slot.departure === departureTime)
+          console.log('Checking suite for departure:', { suiteId, departureTime, hasSlotWithThisDeparture, slotsCount: slots.length })
           if (hasSlotWithThisDeparture) {
             return false
           }
         }
+        console.log('No suite has this departure time available')
         return true
       }
 

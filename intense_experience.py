@@ -40,6 +40,16 @@ CLEANING_BUFFER_HOURS = 1
 DAY_MIN_HOURS = 3
 DAY_MAX_HOURS = 6
 
+# Special suites with 2-hour minimum duration instead of 3
+# These are smaller rooms (Chambres) that allow shorter bookings
+SPECIAL_MIN_DURATION_SUITES = [
+    "f5539e51-9db0-4082-b87e-b3850108c66f",  # Chambre EUPHORYA
+    "78a614b1-199d-4608-ab89-b3850108c66f",  # Chambre IGNIS
+    "67ece5a2-65e2-43c5-9079-b3850108c66f",  # Chambre KAIROS
+    "1113bcbe-ad5f-49c7-8dc0-b3850108c66f",  # Chambre AETHER
+]
+SPECIAL_MIN_HOURS = 2
+
 # Arrival and departure times for journee bookings
 ARRIVAL_TIMES = ['12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
 DEPARTURE_TIMES = ['13:00', '14:00', '15:00', '16:00', '17:00', '18:00']
@@ -707,15 +717,24 @@ def get_payment_request_status(payment_request_id):
 @intense_experience_bp.route('/intense_experience-api/booking-limits', methods=['GET'])
 def get_booking_limits():
     """Get booking duration limits and available times"""
+    suite_id = request.args.get('suite_id')
+    
+    # Determine minimum hours based on suite
+    min_hours = DAY_MIN_HOURS
+    if suite_id and suite_id in SPECIAL_MIN_DURATION_SUITES:
+        min_hours = SPECIAL_MIN_HOURS
+    
     return jsonify({
         'booking_limits': {
-            'day_min_hours': DAY_MIN_HOURS,
+            'day_min_hours': min_hours,
             'day_max_hours': DAY_MAX_HOURS
         },
         'arrival_times': ARRIVAL_TIMES,
         'departure_times': DEPARTURE_TIMES,
         'night_check_in_hour': NIGHT_CHECK_IN_HOUR,
         'night_check_out_hour': NIGHT_CHECK_OUT_HOUR,
+        'special_min_duration_suites': SPECIAL_MIN_DURATION_SUITES,
+        'special_min_hours': SPECIAL_MIN_HOURS,
         'status': 'success'
     })
 
