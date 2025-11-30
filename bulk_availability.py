@@ -16,7 +16,9 @@ from config import (
     ARRIVAL_TIMES,
     DEPARTURE_TIMES,
     NIGHT_CHECK_IN_HOUR,
-    NIGHT_CHECK_OUT_HOUR
+    NIGHT_CHECK_OUT_HOUR, 
+    SUITE_ID_MAPPING,
+    SUITE_ID_MAPPING_REVERSE    
 )
 
 # Configure logging
@@ -138,18 +140,29 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                         slot_end = belgian_tz.localize(datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()))
 
                         # Check if this slot conflicts with any reservation
+                        # For suites in SUITE_ID_MAPPING, check BOTH day and night suites (AND rule)
+                        suite_ids_to_check = [suite_id]
+
+                        # Check if this suite has a corresponding mapped suite ID
+                        mapped_suite_id = SUITE_ID_MAPPING.get(suite_id)
+                        if mapped_suite_id:
+                            suite_ids_to_check.append(mapped_suite_id)
+
                         is_available = True
                         for reservation in reservations:
-                            if reservation.get('RequestedCategoryId') != suite_id:
+                            res_requested_category = reservation.get('RequestedCategoryId')
+
+                            # Only check reservations for the suite IDs we need to consider
+                            if res_requested_category not in suite_ids_to_check:
                                 continue
 
                             res_start_utc = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
                             res_end_utc = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
-                            
+
                             # Convert to Brussels timezone for comparison
                             res_start = res_start_utc.astimezone(belgian_tz)
                             res_end = res_end_utc.astimezone(belgian_tz)
-                            
+
                             # Apply buffer to existing reservations (1 hour before and 1 hour after)
                             res_start_buffered = res_start - timedelta(hours=CLEANING_BUFFER_HOURS)
                             res_end_buffered = res_end + timedelta(hours=CLEANING_BUFFER_HOURS)
@@ -167,6 +180,29 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                             })
 
                 suite_availability[suite_id] = available_slots
+
+                # Special logging for December 10th, 2025 (before AND logic)
+                if "2025-12-10" in date_str:
+                    logger.info(f"DEC10-2025 | Suite {suite_id}: {len(available_slots)} available slots (before AND logic) - {available_slots}")
+
+            # Apply AND logic for mapped suites: if either suite in a pair has 0 availability, both must have 0
+            for suite_id in suite_ids:
+                # Check if this suite has a mapped counterpart
+                mapped_suite_id = SUITE_ID_MAPPING.get(suite_id) or SUITE_ID_MAPPING_REVERSE.get(suite_id)
+                
+                if mapped_suite_id and mapped_suite_id in suite_availability:
+                    # If either suite has 0 availability, set both to 0
+                    if len(suite_availability[suite_id]) == 0 or len(suite_availability[mapped_suite_id]) == 0:
+                        suite_availability[suite_id] = []
+                        suite_availability[mapped_suite_id] = []
+                        
+                        if "2025-12-10" in date_str:
+                            logger.info(f"DEC10-2025 | AND logic applied: Suite {suite_id} and {mapped_suite_id} both set to 0 slots")
+
+            # Special logging for December 10th, 2025 (after AND logic)
+            if "2025-12-10" in date_str:
+                for suite_id in suite_ids:
+                    logger.info(f"DEC10-2025 | FINAL Suite {suite_id}: {len(suite_availability[suite_id])} available slots")
 
             # Date is available if at least one suite has at least one available slot
             has_available_slot = any(len(slots) > 0 for slots in suite_availability.values())
