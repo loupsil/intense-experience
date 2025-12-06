@@ -98,13 +98,38 @@ export default {
       paymentRequestId: '',
       paymentReady: false,
       progressPercent: 0,
-      progressInterval: null
+      progressInterval: null,
+      frontendConfig: {
+        payment_base_url: 'https://app.mews-demo.com/navigator/payment-requests/detail',
+        default_currency: 'EUR',
+        payment_expiration_days: 7,
+        client_name: 'Intense Experience 1.0.0'
+      }
     }
   },
-  mounted() {
+  async mounted() {
+    await this.fetchFrontendConfig()
     this.createPaymentRequest()
   },
   methods: {
+    async fetchFrontendConfig() {
+      try {
+        const response = await fetch('/intense_experience-api/frontend-config')
+        const data = await response.json()
+        if (data.status === 'success') {
+          this.frontendConfig = {
+            payment_base_url: data.payment_base_url,
+            default_currency: data.default_currency,
+            payment_expiration_days: data.payment_expiration_days,
+            client_name: data.client_name
+          }
+        }
+      } catch (error) {
+        console.error('Error loading frontend config:', error)
+        // Use default values if config fails to load
+      }
+    },
+
     async createPaymentRequest() {
       try {
         this.hasError = false
@@ -119,21 +144,23 @@ export default {
           }
         }, 150)
 
+        // Calculate expiration date from config
+        const expirationMs = this.frontendConfig.payment_expiration_days * 24 * 60 * 60 * 1000
+
         // Prepare payment request data
+        // Note: ClientToken and AccessToken are handled server-side for security
         const paymentRequestData = {
-          ClientToken: "E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D",
-          AccessToken: "C618020DC2C24A6DAEF7B38A012C43C1-246E13D8FC45C4A80E61D412555A97E",
-          Client: "Intense Experience 1.0.0",
+          Client: this.frontendConfig.client_name,
           PaymentRequests: [
             {
               AccountId: this.reservation.CustomerId,
               Amount: {
-                Currency: "EUR",
+                Currency: this.frontendConfig.default_currency,
                 Value: this.amount
               },
               Type: "Payment",
               Reason: "PaymentCardMissing",
-              ExpirationUtc: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
+              ExpirationUtc: new Date(Date.now() + expirationMs).toISOString(),
               Description: `Payment for reservation ${this.reservation.Identifier}`,
               ReservationId: this.reservation.Id
             }
@@ -162,8 +189,8 @@ export default {
         const paymentRequestId = data.PaymentRequests[0].Id
         this.paymentRequestId = paymentRequestId
 
-        // Construct payment URL
-        this.paymentUrl = `https://app.mews-demo.com/navigator/payment-requests/detail/${paymentRequestId}?ccy=EUR&language=en-US`
+        // Construct payment URL using config
+        this.paymentUrl = `${this.frontendConfig.payment_base_url}/${paymentRequestId}?ccy=${this.frontendConfig.default_currency}&language=en-US`
 
         // Complete progress
         clearInterval(this.progressInterval)

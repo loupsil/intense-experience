@@ -403,7 +403,21 @@ export default {
       suiteClearedForGoldenCell: false,
       hasArriveeAnticipee: false, // Track if early check-in is selected
       hasDepartTardif: false, // Track if late check-out is selected
-      suiteManuallyChanged: false // Track if suite was manually selected (not from URL)
+      suiteManuallyChanged: false, // Track if suite was manually selected (not from URL)
+      // Frontend config from backend
+      frontendConfig: {
+        day_service_id: null,
+        night_service_id: null,
+        rate_id_nuitee: null,
+        rate_id_journee_semaine: null,
+        rate_id_journee_weekend: null,
+        night_check_in_hour: 19,
+        night_check_out_hour: 10,
+        early_check_in_hour: 18,
+        late_check_out_hour: 12,
+        default_person_count: 2
+      },
+      configLoaded: false
     }
   },
   computed: {
@@ -442,8 +456,12 @@ export default {
 
     bookingSubtitle() {
       if (this.getServiceType() === 'nuitée') {
-        const arrivalTime = this.hasArriveeAnticipee ? '18h' : '19h'
-        const departureTime = this.hasDepartTardif ? '12h' : '10h'
+        const arrivalTime = this.hasArriveeAnticipee 
+          ? `${this.frontendConfig.early_check_in_hour}h` 
+          : `${this.frontendConfig.night_check_in_hour}h`
+        const departureTime = this.hasDepartTardif 
+          ? `${this.frontendConfig.late_check_out_hour}h` 
+          : `${this.frontendConfig.night_check_out_hour}h`
         return `Arrival: ${arrivalTime} - Departure: ${departureTime}`
       } else if (this.getServiceType() === 'journée' && this.selectedDates.start && this.selectedDates.end) {
         const startTime = new Date(this.selectedDates.start).toLocaleTimeString('en-US', {
@@ -470,6 +488,8 @@ export default {
     },
   },
   async mounted() {
+    // Load frontend config first, then services
+    await this.loadFrontendConfig()
     await this.loadServices()
 
     // Handle preselected service
@@ -487,6 +507,32 @@ export default {
     }
   },
   methods: {
+    async loadFrontendConfig() {
+      try {
+        const response = await fetch('/intense_experience-api/frontend-config')
+        const data = await response.json()
+        if (data.status === 'success') {
+          this.frontendConfig = {
+            day_service_id: data.day_service_id,
+            night_service_id: data.night_service_id,
+            rate_id_nuitee: data.rate_id_nuitee,
+            rate_id_journee_semaine: data.rate_id_journee_semaine,
+            rate_id_journee_weekend: data.rate_id_journee_weekend,
+            night_check_in_hour: data.night_check_in_hour,
+            night_check_out_hour: data.night_check_out_hour,
+            early_check_in_hour: data.early_check_in_hour,
+            late_check_out_hour: data.late_check_out_hour,
+            default_person_count: data.default_person_count
+          }
+          this.configLoaded = true
+        }
+      } catch (error) {
+        console.error('Error loading frontend config:', error)
+        // Use default values if config fails to load
+        this.configLoaded = true
+      }
+    },
+
     async loadServices() {
       this.loadingServices = true
       this.servicesError = null
@@ -801,26 +847,25 @@ export default {
       // Return appropriate rate ID based on service type (same as SuiteSelector)
       const serviceType = this.getServiceType()
       if (serviceType === 'nuitée') {
-        return 'ed9391ac-b184-4876-8cc1-b3850108b8b0' // Tarif Suites nuitée
+        return this.frontendConfig.rate_id_nuitee
       } else if (serviceType === 'journée') {
         // Check if it's a weekend journée
         if (this.selectedDates.start) {
           const date = new Date(this.selectedDates.start)
           const dayOfWeek = date.getDay() // 0 = Sunday, 6 = Saturday
           if (dayOfWeek === 0 || dayOfWeek === 6) {
-            return 'd0496fa0-6686-4614-8847-b3850108c537' // TARIF JOURNEE LE WEEKEND
+            return this.frontendConfig.rate_id_journee_weekend
           }
         }
-        return 'c3c2109d-984a-4ad4-978e-b3850108b8ad' // TARIF JOURNEE EN SEMAINE
+        return this.frontendConfig.rate_id_journee_semaine
       }
       return null
     },
 
     selectService(service) {
       this.selectedService = service
-      // JOURNEE service ID
-      const JOURNEE_ID = '86fcc6a7-75ce-457a-a425-b3850108b6bf'
-      this.bookingType = service.Id === JOURNEE_ID ? 'day' : 'night'
+      // Use config for service ID comparison
+      this.bookingType = service.Id === this.frontendConfig.day_service_id ? 'day' : 'night'
       // Clear selected options when service changes to prevent invalid selections
       this.selectedOptions = []
       this.suitePriceCalculation = ''
@@ -829,7 +874,7 @@ export default {
       this.hasDepartTardif = false
 
       // Emit service selection event to parent
-      const serviceType = service.Id === JOURNEE_ID ? 'journée' : 'nuitée'
+      const serviceType = service.Id === this.frontendConfig.day_service_id ? 'journée' : 'nuitée'
       this.$emit('service-selected', { service, serviceType })
     },
 
@@ -1069,7 +1114,7 @@ export default {
           rate_id: this.getDefaultRateForService(),
           start_date: startDate,
           end_date: endDate,
-          person_count: 2,
+          person_count: this.frontendConfig.default_person_count,
           options: this.selectedOptions
         }
 
@@ -1172,44 +1217,39 @@ export default {
     },
 
     getServiceDescription(serviceId) {
-      const descriptions = {
-        '86fcc6a7-75ce-457a-a425-b3850108b6bf': 'Réservation à la journée - arrivée entre 13h et 18h',
-        '7ba0b732-93cc-477a-861d-b3850108b730': 'Réservation à la nuitée - arrivée à 19h, départ à 10h'
+      if (serviceId === this.frontendConfig.day_service_id) {
+        return 'Réservation à la journée - arrivée entre 13h et 18h'
+      } else if (serviceId === this.frontendConfig.night_service_id) {
+        return 'Réservation à la nuitée - arrivée à 19h, départ à 10h'
       }
-      return descriptions[serviceId] || ''
+      return ''
     },
 
     getServiceIcon(serviceId) {
-      return serviceId === '86fcc6a7-75ce-457a-a425-b3850108b6bf' ? 'fas fa-sun' : 'fas fa-moon'
+      return serviceId === this.frontendConfig.day_service_id ? 'fas fa-sun' : 'fas fa-moon'
     },
 
     getServiceType() {
-      const JOURNEE_ID = '86fcc6a7-75ce-457a-a425-b3850108b6bf'
-      const NUITEE_ID = '7ba0b732-93cc-477a-861d-b3850108b730'
-
       if (!this.selectedService) return 'journée' // default
 
-      return this.selectedService.Id === JOURNEE_ID ? 'journée' : 'nuitée'
+      return this.selectedService.Id === this.frontendConfig.day_service_id ? 'journée' : 'nuitée'
     },
 
     getDefaultRateForService() {
       // Return appropriate rate ID based on service type
-      const JOURNEE_ID = '86fcc6a7-75ce-457a-a425-b3850108b6bf'
-      const NUITEE_ID = '7ba0b732-93cc-477a-861d-b3850108b730'
-
       if (!this.selectedService) return null
 
-      if (this.selectedService.Id === JOURNEE_ID) {
+      if (this.selectedService.Id === this.frontendConfig.day_service_id) {
         // Day service - use weekday rate
-        return 'c3c2109d-984a-4ad4-978e-b3850108b8ad'
-      } else if (this.selectedService.Id === NUITEE_ID) {
+        return this.frontendConfig.rate_id_journee_semaine
+      } else if (this.selectedService.Id === this.frontendConfig.night_service_id) {
         // Night service - use night rate
-        return 'ed9391ac-b184-4876-8cc1-b3850108b8b0'
+        return this.frontendConfig.rate_id_nuitee
       }
 
       // Fallback to night rate if service not recognized
       console.warn('Unknown service ID, using default night rate:', this.selectedService.Id)
-      return 'ed9391ac-b184-4876-8cc1-b3850108b8b0'
+      return this.frontendConfig.rate_id_nuitee
     },
 
     formatDateRange(start, end) {

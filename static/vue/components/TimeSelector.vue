@@ -137,7 +137,11 @@ export default {
       specialMinDurationSuites: [],
       specialMinHours: null,
       limitsLoaded: false,
-      pricingLoading: false
+      pricingLoading: false,
+      frontendConfig: {
+        day_service_id: null,
+        night_max_nights: 2
+      }
     }
   },
   computed: {
@@ -156,9 +160,9 @@ export default {
         const isValidDuration = duration >= this.effectiveMinHours && duration <= this.bookingLimits.day_max_hours
         return hasSelection && isValidDuration
       } else {
-        // For night bookings, check that dates are selected and number of nights doesn't exceed 2
+        // For night bookings, check that dates are selected and number of nights doesn't exceed max
         const hasDates = this.selectedDates.start && this.selectedDates.end
-        const isValidNights = this.calculateNights() <= 2
+        const isValidNights = this.calculateNights() <= this.frontendConfig.night_max_nights
         return hasDates && isValidNights
       }
     },
@@ -180,8 +184,8 @@ export default {
         }
       } else if (this.bookingType === 'night' && this.selectedDates.start && this.selectedDates.end) {
         const nights = this.calculateNights()
-        if (nights > 2) {
-          return `Maximum 2 nights`
+        if (nights > this.frontendConfig.night_max_nights) {
+          return `Maximum ${this.frontendConfig.night_max_nights} nights`
         }
       }
       return null
@@ -244,13 +248,14 @@ export default {
       return result
     }
   },
-  mounted() {
+  async mounted() {
     console.log('TimeSelector mounted with props:', {
       selectedSuite: this.selectedSuite,
       suitePricing: this.suitePricing,
       bookingType: this.bookingType,
       service: this.service
     })
+    await this.fetchFrontendConfig()
     this.fetchBookingLimits()
     this.$nextTick(() => {
       this.updateBackgroundColors()
@@ -336,6 +341,19 @@ export default {
     }
   },
   methods: {
+    async fetchFrontendConfig() {
+      try {
+        const response = await fetch('/intense_experience-api/frontend-config')
+        const data = await response.json()
+        if (data.status === 'success') {
+          this.frontendConfig.day_service_id = data.day_service_id
+          this.frontendConfig.night_max_nights = data.night_max_nights || 2
+        }
+      } catch (error) {
+        console.error('Error loading frontend config:', error)
+      }
+    },
+
     updateBackgroundColors() {
       // Check if component is mounted and $el exists
       if (!this.$el || !this.$el.style) {
@@ -586,7 +604,7 @@ export default {
       console.log('TimeSelector: Looking for suite ID match:', targetSuite.Id, 'in', availableSuiteIds)
 
       if (suitePricing && suitePricing.Prices && suitePricing.Prices.length > 0) {
-        const serviceType = this.service?.Id === '86fcc6a7-75ce-457a-a425-b3850108b6bf' ? 'journée' : 'nuitée'
+        const serviceType = this.service?.Id === this.frontendConfig.day_service_id ? 'journée' : 'nuitée'
         console.log('TimeSelector serviceType:', serviceType)
 
         // For journée: sum all hourly prices, for nuitée: take the first (daily) price

@@ -12,18 +12,33 @@ from bulk_availability import check_bulk_availability_journee, check_bulk_availa
 
 # Import all configuration from shared config file
 from config import (
+    MEWS_API_BASE_URL,
+    MEWS_PAYMENT_BASE_URL,
     ENTERPRISE_ID,
+    CLIENT_NAME,
     DAY_SERVICE_ID,
     NIGHT_SERVICE_ID,
+    RATE_ID_NUITEE,
+    RATE_ID_JOURNEE_SEMAINE,
+    RATE_ID_JOURNEE_WEEKEND,
+    AGE_CATEGORY_ADULT_DAY,
+    AGE_CATEGORY_ADULT_NIGHT,
     CLEANING_BUFFER_HOURS,
     DAY_MIN_HOURS,
     DAY_MAX_HOURS,
+    NIGHT_MAX_NIGHTS,
+    DEFAULT_PERSON_COUNT,
+    DEFAULT_CURRENCY,
+    PAYMENT_EXPIRATION_DAYS,
+    TIMEZONE,
     SPECIAL_MIN_DURATION_SUITES,
     SPECIAL_MIN_HOURS,
     ARRIVAL_TIMES,
     DEPARTURE_TIMES,
     NIGHT_CHECK_IN_HOUR,
     NIGHT_CHECK_OUT_HOUR,
+    EARLY_CHECK_IN_HOUR,
+    LATE_CHECK_OUT_HOUR,
     SUITE_ID_MAPPING,
     SUITE_ID_MAPPING_REVERSE
 )
@@ -41,14 +56,13 @@ load_dotenv()
 # Create blueprint
 intense_experience_bp = Blueprint('intense_experience', __name__)
 
-# Mews API configuration
-MEWS_BASE_URL = "https://api.mews-demo.com/api/connector/v1"
+# Mews API configuration (base URL comes from config.py)
 CLIENT_TOKEN = os.getenv('ClientToken')
 ACCESS_TOKEN = os.getenv('AccessToken')
 
 def make_mews_request(endpoint, payload):
     """Make a request to Mews API"""
-    url = f"{MEWS_BASE_URL}/{endpoint}"
+    url = f"{MEWS_API_BASE_URL}/{endpoint}"
     payload.update({
         "ClientToken": CLIENT_TOKEN,
         "AccessToken": ACCESS_TOKEN
@@ -167,7 +181,7 @@ def check_availability():
         return jsonify({"error": "Missing required parameters", "status": "error"}), 400
 
     # Brussels timezone for consistent time comparisons
-    brussels_tz = pytz.timezone('Europe/Brussels')
+    brussels_tz = pytz.timezone(TIMEZONE)
     
     # Add cleaning buffers
     start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
@@ -273,8 +287,7 @@ def get_pricing():
         return jsonify({"error": "Missing required parameters", "status": "error"}), 400
 
     # For night bookings, set time to 23:00:00.000Z
-    # Rate ID for nuitée: 'ed9391ac-b184-4876-8cc1-b3850108b8b0'
-    if rate_id == 'ed9391ac-b184-4876-8cc1-b3850108b8b0':
+    if rate_id == RATE_ID_NUITEE:
         # Extract date part, subtract 1 day, and append 23:00:00.000Z for night bookings
         # This is how Mews API works - not sure why, but this -1 makes it work
         start_date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
@@ -478,13 +491,13 @@ def get_adult_age_category_for_service(service_id):
                 category.get("IsActive")):
                 return category.get("Id")
 
-    # Fallback to hardcoded values if API fails
+    # Fallback to config values if API fails
     if service_id == DAY_SERVICE_ID:
-        return "a78b7aca-fa0b-4199-8b4e-b3850108b8a5"  # Day service adult category
+        return AGE_CATEGORY_ADULT_DAY
     elif service_id == NIGHT_SERVICE_ID:
-        return "6cef9c83-4199-4b40-972b-b3850108b8a6"  # Night service adult category
+        return AGE_CATEGORY_ADULT_NIGHT
 
-    return "6cef9c83-4199-4b40-972b-b3850108b8a6"  # Default fallback
+    return AGE_CATEGORY_ADULT_NIGHT  # Default fallback
 
 @intense_experience_bp.route('/intense_experience-api/create-reservation', methods=['POST'])
 def create_reservation():
@@ -523,15 +536,15 @@ def create_reservation():
                 logger.info(f"Départ tardif product detected: {name}")
         
         # Brussels timezone
-        brussels_tz = pytz.timezone('Europe/Brussels')
+        brussels_tz = pytz.timezone(TIMEZONE)
         
         # Adjust start_date if Arrivée anticipée is selected (change check-in to 18:00 Brussels time)
         if has_arrivee_anticipee:
             start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
             # Convert to Brussels timezone
             start_brussels = start_dt.astimezone(brussels_tz)
-            # Set time to 18:00 Brussels time
-            adjusted_start_brussels = start_brussels.replace(hour=18, minute=0, second=0, microsecond=0)
+            # Set time to early check-in hour Brussels time
+            adjusted_start_brussels = start_brussels.replace(hour=EARLY_CHECK_IN_HOUR, minute=0, second=0, microsecond=0)
             # Convert back to UTC
             adjusted_start_utc = adjusted_start_brussels.astimezone(timezone.utc)
             start_date = adjusted_start_utc.isoformat().replace('+00:00', 'Z')
@@ -542,8 +555,8 @@ def create_reservation():
             end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
             # Convert to Brussels timezone
             end_brussels = end_dt.astimezone(brussels_tz)
-            # Set time to 12:00 Brussels time
-            adjusted_end_brussels = end_brussels.replace(hour=12, minute=0, second=0, microsecond=0)
+            # Set time to late check-out hour Brussels time
+            adjusted_end_brussels = end_brussels.replace(hour=LATE_CHECK_OUT_HOUR, minute=0, second=0, microsecond=0)
             # Convert back to UTC
             adjusted_end_utc = adjusted_end_brussels.astimezone(timezone.utc)
             end_date = adjusted_end_utc.isoformat().replace('+00:00', 'Z')
@@ -712,6 +725,51 @@ def get_booking_limits():
         'status': 'success'
     })
 
+
+@intense_experience_bp.route('/intense_experience-api/frontend-config', methods=['GET'])
+def get_frontend_config():
+    """Get all configuration values needed by the frontend"""
+    return jsonify({
+        # Service IDs
+        'day_service_id': DAY_SERVICE_ID,
+        'night_service_id': NIGHT_SERVICE_ID,
+        
+        # Rate IDs
+        'rate_id_nuitee': RATE_ID_NUITEE,
+        'rate_id_journee_semaine': RATE_ID_JOURNEE_SEMAINE,
+        'rate_id_journee_weekend': RATE_ID_JOURNEE_WEEKEND,
+        
+        # Booking limits
+        'day_min_hours': DAY_MIN_HOURS,
+        'day_max_hours': DAY_MAX_HOURS,
+        'night_max_nights': NIGHT_MAX_NIGHTS,
+        'default_person_count': DEFAULT_PERSON_COUNT,
+        
+        # Time slots
+        'arrival_times': ARRIVAL_TIMES,
+        'departure_times': DEPARTURE_TIMES,
+        
+        # Check-in/Check-out hours
+        'night_check_in_hour': NIGHT_CHECK_IN_HOUR,
+        'night_check_out_hour': NIGHT_CHECK_OUT_HOUR,
+        'early_check_in_hour': EARLY_CHECK_IN_HOUR,
+        'late_check_out_hour': LATE_CHECK_OUT_HOUR,
+        
+        # Special suites
+        'special_min_duration_suites': SPECIAL_MIN_DURATION_SUITES,
+        'special_min_hours': SPECIAL_MIN_HOURS,
+        
+        # Payment configuration
+        'default_currency': DEFAULT_CURRENCY,
+        'payment_expiration_days': PAYMENT_EXPIRATION_DAYS,
+        'payment_base_url': MEWS_PAYMENT_BASE_URL,
+        
+        # Client info
+        'client_name': CLIENT_NAME,
+        
+        'status': 'success'
+    })
+
 @intense_experience_bp.route('/intense_experience-api/check-time-options-availability', methods=['POST'])
 def check_time_options_availability():
     """Check if early check-in and late check-out options are available for a nuitée booking
@@ -750,7 +808,7 @@ def check_time_options_availability():
     check_out_dt = datetime.fromisoformat(check_out_date.replace('Z', '+00:00'))
     
     # Brussels timezone
-    brussels_tz = pytz.timezone('Europe/Brussels')
+    brussels_tz = pytz.timezone(TIMEZONE)
     
     # Convert to Brussels timezone for date extraction
     check_in_brussels = check_in_dt.astimezone(brussels_tz)

@@ -11,6 +11,7 @@ from config import (
     CLEANING_BUFFER_HOURS,
     DAY_MIN_HOURS,
     DAY_MAX_HOURS,
+    TIMEZONE,
     SPECIAL_MIN_DURATION_SUITES,
     SPECIAL_MIN_HOURS,
     ARRIVAL_TIMES,
@@ -135,7 +136,7 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                             continue
 
                         # Create datetime objects for this slot (timezone-aware to match reservations)
-                        belgian_tz = pytz.timezone('Europe/Brussels')
+                        belgian_tz = pytz.timezone(TIMEZONE)
                         slot_start = belgian_tz.localize(datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()))
                         slot_end = belgian_tz.localize(datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()))
 
@@ -341,7 +342,7 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
             reservations = result["Reservations"]
 
             # Group reservations by date with timezone-aware comparisons
-            belgian_tz = pytz.timezone('Europe/Brussels')
+            belgian_tz = pytz.timezone(TIMEZONE)
             reservations_by_date = {}
             for date_str in chunk_dates:
                 date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
