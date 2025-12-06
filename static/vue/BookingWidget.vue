@@ -402,7 +402,8 @@ export default {
       debugMode: false, // Debug mode toggle
       suiteClearedForGoldenCell: false,
       hasArriveeAnticipee: false, // Track if early check-in is selected
-      hasDepartTardif: false // Track if late check-out is selected
+      hasDepartTardif: false, // Track if late check-out is selected
+      suiteManuallyChanged: false // Track if suite was manually selected (not from URL)
     }
   },
   computed: {
@@ -941,6 +942,8 @@ export default {
     selectSuite(suite) {
       this.selectedSuite = suite
       this.suiteClearedForGoldenCell = false
+      // Mark that suite was manually selected (not from URL preselection)
+      this.suiteManuallyChanged = true
     },
 
     updateSuitePricing(pricing) {
@@ -1131,6 +1134,32 @@ export default {
 
     prevStep() {
       if (this.currentStep > 1) {
+        // When going back from Options (step 5), skip Suite Selection ONLY if:
+        // 1. Suite was preselected via URL AND
+        // 2. Suite was never manually changed by the user
+        if (this.currentStep === 5 && this.preselectedSuiteId && !this.suiteManuallyChanged) {
+          // Skip step 4 (Suite Selection) and go directly to step 3 (Customer Info)
+          this.currentStep = 3
+          return
+        }
+        
+        // When going back from Suite Selection (step 4), reset suite selection
+        if (this.currentStep === 4) {
+          // Reset to preselected suite from URL if available, otherwise clear selection
+          if (this.preselectedSuiteId) {
+            // Keep the original preselected suite if it was set via URL
+            // The suite will be reloaded when navigating back to step 4
+            this.selectedSuite = this.preselectedSuite || null
+            // Reset the manual change flag when going back
+            this.suiteManuallyChanged = false
+          } else {
+            this.selectedSuite = null
+          }
+          this.suiteClearedForGoldenCell = false
+          this.suitePricing = {}
+          this.suitePriceCalculation = ''
+          this.pricing.total = 0
+        }
         this.currentStep--
       }
     },
@@ -1198,11 +1227,19 @@ export default {
 
 
 
-    resetBooking() {
-      // Reset the entire booking process
-      this.currentStep = 1
-      this.selectedService = null
-      this.selectedSuite = null
+    async resetBooking() {
+      // Reset the booking process but go back to calendar view (step 2)
+      // Keep the selected service so the calendar works
+      this.currentStep = 2
+      // Keep selectedService - don't reset it
+      
+      // Restore preselected suite from URL if it was originally provided
+      if (this.preselectedSuiteId && this.selectedService) {
+        await this.loadSuitesForPreselection(this.selectedService)
+      } else {
+        this.selectedSuite = null
+      }
+      
       this.suiteClearedForGoldenCell = false
       this.selectedDates = { start: null, end: null }
       this.selectedOptions = []
@@ -1212,9 +1249,9 @@ export default {
       this.pricing = { total: 0, options: 0, breakdown: [] }
       this.reservation = null
       this.reservationError = null
-      this.accessPoint = 'general'
       this.hasArriveeAnticipee = false
       this.hasDepartTardif = false
+      this.suiteManuallyChanged = false
     },
 
     toggleDebug() {
