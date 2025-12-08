@@ -8,7 +8,13 @@ import uuid
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pytz
-from bulk_availability import check_bulk_availability_journee, check_bulk_availability_nuitee
+from bulk_availability import (
+    check_bulk_availability_journee, 
+    check_bulk_availability_nuitee,
+    get_resource_ids_for_suites,
+    get_resource_blocks,
+    check_resource_block_conflict
+)
 
 # Import all configuration from shared config file
 from config import (
@@ -258,11 +264,30 @@ def check_availability():
                 conflicting_reservations.append(reservation)
                 is_available = False
 
-    logger.info(f"Availability check completed - available: {is_available}, conflicts: {len(conflicting_reservations)}")
+    # Also check for resource block conflicts (if still available after reservation check)
+    has_resource_block_conflict = False
+    if is_available and suite_ids_to_check:
+        # Fetch resource blocks with a wide range to catch multi-day blocks
+        # Use 7 days before/after to ensure we catch any blocks that extend into our time slot
+        blocks_query_start = (start_dt - timedelta(days=7)).isoformat()
+        blocks_query_end = (end_dt + timedelta(days=7)).isoformat()
+        resource_blocks = get_resource_blocks(make_mews_request, blocks_query_start, blocks_query_end)
+        
+        # Get all resource IDs for the suite categories we need to check (using static mapping)
+        resource_ids_to_check = get_resource_ids_for_suites(suite_ids_to_check)
+        
+        # Check for resource block conflicts
+        if check_resource_block_conflict(start_dt_brussels, end_dt_brussels, resource_ids_to_check, resource_blocks):
+            is_available = False
+            has_resource_block_conflict = True
+            logger.info(f"Resource block conflict detected for suite {suite_id}")
+
+    logger.info(f"Availability check completed - available: {is_available}, reservation conflicts: {len(conflicting_reservations)}, resource_block_conflict: {has_resource_block_conflict}")
 
     return jsonify({
         "available": is_available,
         "conflicting_reservations": conflicting_reservations,
+        "has_resource_block_conflict": has_resource_block_conflict,
         "status": "success"
     })
 
@@ -876,6 +901,25 @@ def check_time_options_availability():
         if not (res_end_buffered <= late_checkout_start or res_start_buffered >= late_checkout_end):
             late_checkout_available = False
             logger.info(f"Late check-out blocked by reservation from {res_start} to {res_end} (with buffer: {res_start_buffered} to {res_end_buffered})")
+    
+    # Also check for resource block conflicts (if still available after reservation check)
+    if early_checkin_available or late_checkout_available:
+        # Fetch resource blocks for the date range
+        resource_blocks = get_resource_blocks(make_mews_request, query_start, query_end)
+        
+        # Get resource IDs for the journée suite (using static mapping)
+        resource_ids_to_check = get_resource_ids_for_suites([journee_suite_id])
+        
+        if resource_ids_to_check:
+            # Check early check-in slot for resource block conflicts
+            if early_checkin_available and check_resource_block_conflict(early_checkin_start, early_checkin_end, resource_ids_to_check, resource_blocks):
+                early_checkin_available = False
+                logger.info(f"Early check-in blocked by resource block")
+            
+            # Check late check-out slot for resource block conflicts
+            if late_checkout_available and check_resource_block_conflict(late_checkout_start, late_checkout_end, resource_ids_to_check, resource_blocks):
+                late_checkout_available = False
+                logger.info(f"Late check-out blocked by resource block")
     
     logger.info(f"Time options availability: early_checkin={early_checkin_available}, late_checkout={late_checkout_available}")
     

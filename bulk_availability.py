@@ -19,11 +19,109 @@ from config import (
     NIGHT_CHECK_IN_HOUR,
     NIGHT_CHECK_OUT_HOUR, 
     SUITE_ID_MAPPING,
-    SUITE_ID_MAPPING_REVERSE    
+    SUITE_ID_MAPPING_REVERSE,
+    SUITE_TO_RESOURCE_ID,
+    BUILDING_RESOURCE_ID
 )
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+
+def get_resource_ids_for_suites(suite_ids):
+    """
+    Get the physical resource IDs for the given suite category IDs.
+    Uses the static SUITE_TO_RESOURCE_ID mapping from config.
+    
+    Args:
+        suite_ids: list of suite category IDs
+    
+    Returns:
+        list: List of physical resource IDs
+    """
+    resource_ids = []
+    for suite_id in suite_ids:
+        resource_id = SUITE_TO_RESOURCE_ID.get(suite_id)
+        if resource_id and resource_id not in resource_ids:
+            resource_ids.append(resource_id)
+    return resource_ids
+
+
+def get_resource_blocks(make_mews_request_func, start_utc, end_utc):
+    """
+    Fetch resource blocks for a given time range.
+    
+    Returns:
+        list: List of resource block objects with StartUtc, EndUtc, AssignedResourceId
+    """
+    payload = {
+        "Client": "Intense Experience Booking",
+        "CollidingUtc": {
+            "StartUtc": start_utc,
+            "EndUtc": end_utc
+        },
+        "Limitation": {"Count": 1000}
+    }
+    
+    result = make_mews_request_func("resourceBlocks/getAll", payload)
+    if not result or "ResourceBlocks" not in result:
+        logger.warning("Failed to fetch resource blocks or no blocks found")
+        return []
+    
+    # Filter to only active blocks
+    active_blocks = [block for block in result["ResourceBlocks"] if block.get("IsActive")]
+    logger.info(f"Found {len(active_blocks)} active resource blocks in range {start_utc} to {end_utc}")
+    return active_blocks
+
+
+def check_resource_block_conflict(slot_start, slot_end, resource_ids, resource_blocks, timezone_str=TIMEZONE):
+    """
+    Check if a time slot conflicts with any resource block for the given resources.
+    Also checks for building-level blocks that affect ALL suites.
+    
+    Args:
+        slot_start: datetime object (timezone-aware) for slot start
+        slot_end: datetime object (timezone-aware) for slot end
+        resource_ids: list of resource IDs to check against
+        resource_blocks: list of resource block objects
+        timezone_str: timezone string for conversions
+    
+    Returns:
+        bool: True if there's a conflict, False otherwise
+    """
+    if not resource_blocks:
+        return False
+    
+    belgian_tz = pytz.timezone(timezone_str)
+    
+    for block in resource_blocks:
+        block_resource_id = block.get("AssignedResourceId")
+        
+        # Check if this is a building-level block (affects ALL suites)
+        is_building_block = BUILDING_RESOURCE_ID and block_resource_id == BUILDING_RESOURCE_ID
+        
+        # Skip blocks not assigned to our resources (unless it's a building block)
+        if not is_building_block and (not resource_ids or block_resource_id not in resource_ids):
+            continue
+        
+        # Parse block times
+        block_start_utc = datetime.fromisoformat(block.get("StartUtc", "").replace("Z", "+00:00"))
+        block_end_utc = datetime.fromisoformat(block.get("EndUtc", "").replace("Z", "+00:00"))
+        
+        # Convert to local timezone for comparison
+        block_start = block_start_utc.astimezone(belgian_tz)
+        block_end = block_end_utc.astimezone(belgian_tz)
+        
+        # Check for overlap (slot vs block - no buffer applied to blocks)
+        # Overlap exists if: NOT (slot_end <= block_start OR slot_start >= block_end)
+        if not (slot_end <= block_start or slot_start >= block_end):
+            if is_building_block:
+                logger.debug(f"Building-level block conflict: slot {slot_start}-{slot_end} overlaps with block {block_start}-{block_end}")
+            else:
+                logger.debug(f"Resource block conflict: slot {slot_start}-{slot_end} overlaps with block {block_start}-{block_end}")
+            return True
+    
+    return False
 
 def check_bulk_availability_journee(make_mews_request_func, data):
     """Check availability for day bookings (journée) - considers reservations from both day and night services - shows date as unavailable if no valid time slots remain"""
@@ -62,6 +160,18 @@ def check_bulk_availability_journee(make_mews_request_func, data):
     # Sort dates
     sorted_dates = sorted(set(dates))
     availability_results = {}
+
+    # Fetch resource blocks for the entire date range
+    # Use a wide buffer (7 days before/after) to catch multi-day blocks that might extend into our range
+    if sorted_dates:
+        range_start = datetime.fromisoformat(sorted_dates[0].replace('Z', '+00:00'))
+        range_end = datetime.fromisoformat(sorted_dates[-1].replace('Z', '+00:00')) + timedelta(days=1)
+        # Add generous buffer to catch multi-day blocks that start before or end after our range
+        blocks_start = (range_start - timedelta(days=7)).isoformat()
+        blocks_end = (range_end + timedelta(days=7)).isoformat()
+        resource_blocks = get_resource_blocks(make_mews_request_func, blocks_start, blocks_end)
+    else:
+        resource_blocks = []
 
     # Process dates in chunks
     CHUNK_SIZE_DAYS = 4
@@ -172,6 +282,14 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                             if not (slot_end <= res_start_buffered or slot_start >= res_end_buffered):
                                 is_available = False
                                 break
+
+                        # Also check for resource block conflicts (if still available after reservation check)
+                        if is_available:
+                            # Get resource IDs for all suite categories we need to check
+                            resource_ids_to_check = get_resource_ids_for_suites(suite_ids_to_check)
+                            
+                            if check_resource_block_conflict(slot_start, slot_end, resource_ids_to_check, resource_blocks):
+                                is_available = False
 
                         if is_available:
                             available_slots.append({
@@ -296,6 +414,18 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
     sorted_dates = sorted(set(dates))  # Remove duplicates and sort
     availability_results = {}
 
+    # Fetch resource blocks for the entire date range
+    # Use a wide buffer (7 days before/after) to catch multi-day blocks that might extend into our range
+    if sorted_dates:
+        range_start = datetime.fromisoformat(sorted_dates[0].replace('Z', '+00:00'))
+        range_end = datetime.fromisoformat(sorted_dates[-1].replace('Z', '+00:00')) + timedelta(days=2)  # +2 for night checkout next day
+        # Add generous buffer to catch multi-day blocks that start before or end after our range
+        blocks_start = (range_start - timedelta(days=7)).isoformat()
+        blocks_end = (range_end + timedelta(days=7)).isoformat()
+        resource_blocks = get_resource_blocks(make_mews_request_func, blocks_start, blocks_end)
+    else:
+        resource_blocks = []
+
     # Process dates in chunks with parallel execution to speed up fetching
     CHUNK_SIZE_DAYS = 4  # Mews API limitation: max 4 days per chunk
     MAX_HOURS_PER_CHUNK = 96
@@ -378,8 +508,9 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
 
                 return res_start.astimezone(belgian_tz), res_end.astimezone(belgian_tz)
 
-            def is_slot_available_for_suite(slot_start, slot_end, suite_reservations):
-                """Check if a suite has no reservation conflicts for the provided slot."""
+            def is_slot_available_for_suite(slot_start, slot_end, suite_reservations, suite_id_for_blocks=None):
+                """Check if a suite has no reservation conflicts and no resource block conflicts for the provided slot."""
+                # First check reservation conflicts
                 for reservation in suite_reservations:
                     res_start = reservation["start"]
                     res_end = reservation["end"]
@@ -391,6 +522,13 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
                     # Check for overlap (new slot WITHOUT buffer vs existing reservation WITH buffer)
                     if not (slot_end <= res_start_buffered or slot_start >= res_end_buffered):
                         return False
+                
+                # Then check resource block conflicts
+                if suite_id_for_blocks:
+                    resource_ids_to_check = get_resource_ids_for_suites([suite_id_for_blocks])
+                    if check_resource_block_conflict(slot_start, slot_end, resource_ids_to_check, resource_blocks):
+                        return False
+                
                 return True
 
             # Check availability for each date in this chunk with morning/night granularity
@@ -424,9 +562,9 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
                 night_available_suite_ids = set()
 
                 for suite_id, suite_reservations in suite_reservations_map.items():
-                    if is_slot_available_for_suite(morning_start, morning_end, suite_reservations):
+                    if is_slot_available_for_suite(morning_start, morning_end, suite_reservations, suite_id):
                         morning_available_suite_ids.add(suite_id)
-                    if is_slot_available_for_suite(night_start, night_end, suite_reservations):
+                    if is_slot_available_for_suite(night_start, night_end, suite_reservations, suite_id):
                         night_available_suite_ids.add(suite_id)
 
                 available_morning = len(morning_available_suite_ids) > 0

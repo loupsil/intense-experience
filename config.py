@@ -119,6 +119,18 @@ if is_demo:
 
     # Reverse mapping for convenience
     SUITE_ID_MAPPING_REVERSE = {v: k for k, v in SUITE_ID_MAPPING.items()}
+
+    # =============================================================================
+    # BUILDING RESOURCE ID (blocks all suites when blocked) - DEMO
+    # =============================================================================
+    # TODO: Add demo building resource ID when available
+    BUILDING_RESOURCE_ID = None
+
+    # =============================================================================
+    # SUITE TO PHYSICAL RESOURCE MAPPING (for resource blocks) - DEMO
+    # =============================================================================
+    # TODO: Add demo resource IDs when available
+    SUITE_TO_RESOURCE_ID = {}
 else:
     # =============================================================================
     # MEWS API CONFIGURATION
@@ -232,4 +244,38 @@ else:
 
     # Reverse mapping for convenience
     SUITE_ID_MAPPING_REVERSE = {v: k for k, v in SUITE_ID_MAPPING.items()}
+
+    # =============================================================================
+    # BUILDING RESOURCE ID (blocks all suites when blocked)
+    # =============================================================================
+    # When a resource block is assigned to this ID, it means the entire building is blocked
+    BUILDING_RESOURCE_ID = "c29fb2fc-76e1-44ec-8cc2-b2dc009a8aec"
+
+    # =============================================================================
+    # SUITE TO PHYSICAL RESOURCE MAPPING (for resource blocks)
+    # =============================================================================
+    # Maps suite category IDs to physical resource IDs used in resource blocks
+    # Physical rooms are numbered 1-9 in Mews
+    # Room 1: INTENSE, Room 2: NAIADES, Room 3: AETHER, Room 4: IGNIS, Room 5: GAIA
+    # Room 6: KAIROS, Room 7: HEDONE, Room 8: EUPHORYA, Room 9: EXTASE
+
+    SUITE_TO_RESOURCE_ID = {
+        # INTENSE (Room 1) - has both journée and nuitée
+        "57ac61e2-cd46-47d1-a032-b2b501448106": "7461f9b1-34d5-41ee-9dc9-b1e30088bceb",  # INTENSE Journée
+        "0f596098-93aa-432a-9bf2-b1e30088bcdb": "7461f9b1-34d5-41ee-9dc9-b1e30088bceb",  # INTENSE Nuitée
+        # GAIA (Room 5) - has both journée and nuitée
+        "f9f1b450-f6b8-40ba-93fe-b2b501453c7a": "fb18ffc9-0ba9-4f39-b0fe-b1e30088bceb",  # GAIA Journée
+        "66f622d5-7632-4e23-8e16-b2b50129835e": "fb18ffc9-0ba9-4f39-b0fe-b1e30088bceb",  # GAIA Nuitée
+        # EXTASE (Room 9) - has both journée and nuitée
+        "6bf55cbf-67a3-4a25-b7a8-b2b50144ecf5": "600bfd6a-4226-4dbb-897c-b1e30088bceb",  # EXTASE Journée
+        "dcb31253-17bd-47d5-8c2b-b2b50129b921": "600bfd6a-4226-4dbb-897c-b1e30088bceb",  # EXTASE Nuitée
+        # AETHER (Room 3) - journée only
+        "9465a9fe-3295-476c-a7f2-b2b50145d659": "183fdd1e-480a-44a3-b315-b1e30088bceb",  # AETHER Journée
+        # IGNIS (Room 4) - journée only
+        "15b14722-8aa0-482b-897c-b2b501457cac": "f5007af3-61da-450c-a5c0-b1e30088bceb",  # IGNIS Journée
+        # KAIROS (Room 6) - journée only
+        "4b5a16dd-3ac1-40a0-a7ff-b2b5014701e7": "6e1aa05b-6a8b-4bb4-87b7-b1e30088bceb",  # KAIROS Journée
+        # EUPHORYA (Room 8) - journée only
+        "7cb2802a-6404-41b2-80a3-b2b50146ae6f": "5b60745c-e2ca-4ce7-9261-b1e30088bceb",  # EUPHORYA Journée
+    }
 
