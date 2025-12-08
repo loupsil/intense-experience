@@ -3,7 +3,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 from intense_experience import intense_experience_bp
-from config import NIGHT_SERVICE_ID
+from config import NIGHT_SERVICE_ID, DAY_SERVICE_ID
 
 # Load environment variables from .env file
 load_dotenv()
@@ -21,9 +21,9 @@ def index():
     # Parse URL parameters for different entry points
     suite_id = request.args.get('suite_id')
     service_id = request.args.get('service_id')
-    
-    # If service_id is not provided, redirect with default service_id (nuitée)
-    if not service_id:
+
+    # If service_id is not provided or invalid, redirect with default service_id (nuitée)
+    if not service_id or service_id not in [DAY_SERVICE_ID, NIGHT_SERVICE_ID]:
         service_id = NIGHT_SERVICE_ID
         params = {'service_id': service_id}
         if suite_id:
