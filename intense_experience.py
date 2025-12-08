@@ -409,6 +409,11 @@ def get_products():
     """Get available products (upsells/options)"""
     service_ids = [DAY_SERVICE_ID, NIGHT_SERVICE_ID]
 
+    def has_extra_name(product):
+        names = [product.get("Name", "")]
+        names.extend(product.get("Names", {}).values())
+        return any(str(name).strip().lower() == "extra" for name in names if name is not None)
+
     payload = {
         "ServiceIds": service_ids,
         "EnterpriseIds": [ENTERPRISE_ID],
@@ -418,7 +423,11 @@ def get_products():
 
     result = make_mews_request("products/getAll", payload)
     if result and "Products" in result:
-        return jsonify({"products": result["Products"], "status": "success"})
+        products = [
+            product for product in result["Products"]
+            if not has_extra_name(product)
+        ]
+        return jsonify({"products": products, "status": "success"})
     return jsonify({"error": "Failed to fetch products", "status": "error"}), 500
 
 @intense_experience_bp.route('/intense_experience-api/resource-category-images', methods=['POST'])
