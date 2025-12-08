@@ -8,6 +8,7 @@ import uuid
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pytz
+import unicodedata
 from bulk_availability import (
     check_bulk_availability_journee, 
     check_bulk_availability_nuitee,
@@ -134,9 +135,35 @@ def get_suites():
 
     result = make_mews_request("resourceCategories/getAll", payload)
     if result and "ResourceCategories" in result:
+        # Helper to check category name (case- and accent-insensitive)
+        def is_excluded_category(cat):
+            raw_name = cat.get("Name") or cat.get("Names") or ""
+            if isinstance(raw_name, dict):
+                raw_name = raw_name.get("fr-FR") or raw_name.get("en-US") or next(iter(raw_name.values()), "")
+            name_ascii = unicodedata.normalize("NFKD", str(raw_name)).encode("ascii", "ignore").decode("ascii").lower()
+            return name_ascii in {"etage", "batiment"}
+        
         # Filter to only show suites (not buildings/floors)
-        suites = [cat for cat in result["ResourceCategories"]
-                 if cat.get("Type") in ["Suite", "Room"] and cat.get("IsActive")]
+        # For journée: include Suite, Room, Other, and PrivateSpaces classified as Other,
+        # but exclude "Etage" and "Batiment"
+        def is_included_category(cat, is_day_service):
+            cat_type = cat.get("Type")
+            classification = cat.get("Classification")
+            if cat_type in ["Suite", "Room", "Other"]:
+                return True
+            if is_day_service and cat_type == "PrivateSpaces" and classification == "Other":
+                return True
+            return False
+
+        if service_id == DAY_SERVICE_ID:
+            suites = [cat for cat in result["ResourceCategories"]
+                     if cat.get("IsActive")
+                     and is_included_category(cat, True)
+                     and not is_excluded_category(cat)]
+        else:
+            suites = [cat for cat in result["ResourceCategories"]
+                     if cat.get("IsActive")
+                     and is_included_category(cat, False)]
         return jsonify({"suites": suites, "status": "success"})
     return jsonify({"error": "Failed to fetch suites", "status": "error"}), 500
 

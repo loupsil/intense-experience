@@ -1,4 +1,5 @@
 import logging
+import unicodedata
 from datetime import datetime, timedelta
 import pytz
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -146,8 +147,30 @@ def check_bulk_availability_journee(make_mews_request_func, data):
         logger.error("Failed to fetch suites")
         return {"error": "Failed to fetch suites", "status": "error"}, 500
 
+    # For journée: include Suite, Room, and Other types
+    # But exclude resources named "Etage" or "Batiment"
+    def is_excluded_category(cat):
+        """Return True if category name matches Etage/Batiment (case- and accent-insensitive)."""
+        raw_name = cat.get("Name") or cat.get("Names") or ""
+        if isinstance(raw_name, dict):
+            raw_name = raw_name.get("fr-FR") or raw_name.get("en-US") or next(iter(raw_name.values()), "")
+        name_ascii = unicodedata.normalize("NFKD", str(raw_name)).encode("ascii", "ignore").decode("ascii").lower()
+        return name_ascii in {"etage", "batiment"}
+
+    def is_included_category(cat):
+        """Include Suites, Rooms, Other, and PrivateSpaces classified as Other."""
+        cat_type = cat.get("Type")
+        classification = cat.get("Classification")
+        if cat_type in ["Suite", "Room", "Other"]:
+            return True
+        if cat_type == "PrivateSpaces" and classification == "Other":
+            return True
+        return False
+
     all_suites = [cat for cat in suites_result["ResourceCategories"]
-                  if cat.get("Type") in ["Suite", "Room"] and cat.get("IsActive")]
+                  if cat.get("IsActive")
+                  and is_included_category(cat)
+                  and not is_excluded_category(cat)]
 
     # NOTE: We don't filter by suite_id here because we need to check ALL suites
     # to compute partial availability (golden cells). The selected_suite_id is only

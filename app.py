@@ -79,6 +79,8 @@ def index():
     # Chambre IGNIS Journée (PROD): ?service_id=7664a134-ac16-464c-80c0-b2b5006f292d&suite_id=15b14722-8aa0-482b-897c-b2b501457cac
     # Chambre KAIROS Journée (PROD): ?service_id=7664a134-ac16-464c-80c0-b2b5006f292d&suite_id=4b5a16dd-3ac1-40a0-a7ff-b2b5014701e7
     # Chambre AETHER Journée (PROD): ?service_id=7664a134-ac16-464c-80c0-b2b5006f292d&suite_id=9465a9fe-3295-476c-a7f2-b2b50145d659
+    # Espace HEDONE Journée (PROD): ?service_id=7664a134-ac16-464c-80c0-b2b5006f292d&suite_id=0b81c6f6-3b6f-4486-8378-b2b5014664b1
+    # Espace NAIADE Journée (PROD): ?service_id=7664a134-ac16-464c-80c0-b2b5006f292d&suite_id=2cb64c65-5472-454a-abca-b2b50146249b
     
 
 if __name__ == '__main__':
