@@ -412,7 +412,7 @@ def get_products():
     def has_extra_name(product):
         names = [product.get("Name", "")]
         names.extend(product.get("Names", {}).values())
-        return any(str(name).strip().lower() == "extra" for name in names if name is not None)
+        return any("#extra" in str(name).lower() for name in names if name is not None)
 
     payload = {
         "ServiceIds": service_ids,
