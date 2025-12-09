@@ -425,7 +425,8 @@ def get_products():
     if result and "Products" in result:
         products = [
             product for product in result["Products"]
-            if not has_extra_name(product)
+            if product.get("IsActive", False)
+            and not has_extra_name(product)
         ]
         return jsonify({"products": products, "status": "success"})
     return jsonify({"error": "Failed to fetch products", "status": "error"}), 500
