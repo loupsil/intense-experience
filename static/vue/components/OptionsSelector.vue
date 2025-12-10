@@ -32,8 +32,8 @@
         <div class="option-header">
           <h4>{{ product.Names?.['fr-FR'] || product.Name }}</h4>
           <div class="option-price">
-            <span class="price">{{ getProductPriceInfo(product).price }}€</span>
-            <span v-if="product.Pricing?.Type === 'PerPerson'" class="per-person">/pers.</span>
+            <span class="price">{{ formatUnitPrice(product) }}</span>
+            <span v-if="isPerPersonCharging(product)" class="per-person">/pp</span>
           </div>
         </div>
 
@@ -248,17 +248,38 @@ export default {
       })
     },
 
-    getProductPrice(product) {
-      // Extract base price from product data (Mews API format)
-      let basePrice = null
-
+    getBasePrice(product) {
       if (product.Price && typeof product.Price.GrossValue === 'number') {
-        basePrice = product.Price.GrossValue
-      } else if (product.Pricing && product.Pricing.Value && typeof product.Pricing.Value.GrossValue === 'number') {
-        basePrice = product.Pricing.Value.GrossValue
-      } else {
-        // No price found - return error indicator
-        console.error('Price not found for product:', product.Name || product.Id)
+        return product.Price.GrossValue
+      }
+      if (product.Pricing && product.Pricing.Value && typeof product.Pricing.Value.GrossValue === 'number') {
+        return product.Pricing.Value.GrossValue
+      }
+
+      console.error('Price not found for product:', product.Name || product.Id)
+      return null
+    },
+
+    formatUnitPrice(product) {
+      const basePrice = this.getBasePrice(product)
+      if (typeof basePrice === 'number') {
+        return `${basePrice}€`
+      }
+      return 'N/A'
+    },
+
+    isPerPersonCharging(product) {
+      const charging = product.Charging
+      const pricingType = product.Pricing?.Type
+      return charging === 'PerPerson' ||
+        charging === 'PerPersonPerTimeUnit' ||
+        pricingType === 'PerPerson' ||
+        pricingType === 'PerPersonPerTimeUnit'
+    },
+
+    getProductPrice(product) {
+      const basePrice = this.getBasePrice(product)
+      if (typeof basePrice !== 'number') {
         return 'N/A'
       }
 
@@ -278,16 +299,8 @@ export default {
     },
 
     getProductPriceInfo(product) {
-      // Extract base price from product data (Mews API format)
-      let basePrice = null
-
-      if (product.Price && typeof product.Price.GrossValue === 'number') {
-        basePrice = product.Price.GrossValue
-      } else if (product.Pricing && product.Pricing.Value && typeof product.Pricing.Value.GrossValue === 'number') {
-        basePrice = product.Pricing.Value.GrossValue
-      } else {
-        // No price found - return error indicator
-        console.error('Price not found for product:', product.Name || product.Id)
+      const basePrice = this.getBasePrice(product)
+      if (typeof basePrice !== 'number') {
         return { calculation: 'N/A', price: 'N/A' }
       }
 
@@ -622,13 +635,16 @@ export default {
 
 .option-price {
   text-align: right;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .price {
   font-size: 20px;
   font-weight: bold;
   color: var(--option-card-text, #333);
-  display: block;
 }
 
 .per-person {
