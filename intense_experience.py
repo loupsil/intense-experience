@@ -338,23 +338,25 @@ def get_pricing():
     if not all([rate_id, start_date, end_date]):
         return jsonify({"error": "Missing required parameters", "status": "error"}), 400
 
-    # For night bookings, set time to 23:00:00.000Z
     if rate_id == RATE_ID_NUITEE:
-        # Extract date part, subtract 1 day, and append 23:00:00.000Z for night bookings
-        # This is how Mews API works - not sure why, but this -1 makes it work
+        # Convert to timezone-aware datetimes
         start_date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
         end_date_obj = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        brussels_tz = pytz.timezone(TIMEZONE)
 
-        # Subtract 1 day to get the correct pricing dates
-        adjusted_start_date = start_date_obj - timedelta(days=1)
-        adjusted_end_date = end_date_obj - timedelta(days=1)
+        def to_time_unit_start_utc(dt):
+            """Return Mews time-unit start in UTC for the local midnight of the date."""
+            local_dt = dt.astimezone(brussels_tz)
+            local_midnight = brussels_tz.localize(datetime.combine(local_dt.date(), datetime.min.time()))
+            utc_midnight = local_midnight.astimezone(timezone.utc).replace(microsecond=0)
+            return utc_midnight.isoformat().replace('+00:00', 'Z')
 
-        first_time_unit = adjusted_start_date.strftime('%Y-%m-%d') + 'T23:00:00.000Z'
-        last_time_unit = adjusted_end_date.strftime('%Y-%m-%d') + 'T23:00:00.000Z'
+        first_time_unit = to_time_unit_start_utc(start_date_obj)
+        last_time_unit = to_time_unit_start_utc(end_date_obj)
 
-        logger.info(f"PRICING: Nuitée detected - adjusting time units to 23:00:00.000Z with -1 day offset")
-        logger.info(f"PRICING: Original start_date: {start_date}, adjusted: {first_time_unit} (yesterday)")
-        logger.info(f"PRICING: Original end_date: {end_date}, adjusted: {last_time_unit} (yesterday)")
+        logger.info("PRICING: Nuitée detected - adjusting time units using timezone-aware midnight conversion")
+        logger.info(f"PRICING: Original start_date: {start_date}, adjusted UTC midnight: {first_time_unit}")
+        logger.info(f"PRICING: Original end_date: {end_date}, adjusted UTC midnight: {last_time_unit}")
     else:
         # For day bookings, keep the original logic
         first_time_unit = start_date
