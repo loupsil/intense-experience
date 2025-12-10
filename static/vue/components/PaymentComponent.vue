@@ -195,7 +195,7 @@ export default {
         this.paymentRequestId = paymentRequestId
 
         // Construct payment URL using config
-        this.paymentUrl = `${this.frontendConfig.payment_base_url}/${paymentRequestId}?ccy=${this.frontendConfig.default_currency}&language=en-US`
+        this.paymentUrl = `${this.frontendConfig.payment_base_url}/${paymentRequestId}?ccy=${this.frontendConfig.default_currency}&language=fr-FR`
 
         // Complete progress
         clearInterval(this.progressInterval)
