@@ -139,12 +139,38 @@ export default {
       return this.serviceType === 'journée' ? 'day' : 'night'
     },
     sortedSuites() {
-      // Sort suites to show available ones first
+      // Define the desired order for suite names
+      const suiteOrder = ['GAIA', 'EXTASE', 'INTENSE']
+      
+      // Sort suites to show available ones first, then by suite order
       return [...this.availableSuites].sort((a, b) => {
         const aAvailable = this.suiteAvailability[a.Id] ? 1 : 0
         const bAvailable = this.suiteAvailability[b.Id] ? 1 : 0
-        // Sort in descending order (available first)
-        return bAvailable - aAvailable
+        
+        // Primary sort: available first (descending order)
+        if (bAvailable !== aAvailable) {
+          return bAvailable - aAvailable
+        }
+        
+        // Secondary sort: by suite order (GAIA, EXTASE, INTENSE)
+        const aName = (a.Names && a.Names['fr-FR']) || a.Name || ''
+        const bName = (b.Names && b.Names['fr-FR']) || b.Name || ''
+        
+        // Find the index of each suite in the order array
+        const aIndex = suiteOrder.findIndex(name => aName.toUpperCase().includes(name))
+        const bIndex = suiteOrder.findIndex(name => bName.toUpperCase().includes(name))
+        
+        // If both found in order, sort by their position
+        if (aIndex !== -1 && bIndex !== -1) {
+          return aIndex - bIndex
+        }
+        
+        // If only one found, it comes first
+        if (aIndex !== -1) return -1
+        if (bIndex !== -1) return 1
+        
+        // If neither found, maintain original order
+        return 0
       })
     }
   },
