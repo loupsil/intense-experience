@@ -99,6 +99,7 @@ export default {
       paymentReady: false,
       progressPercent: 0,
       progressInterval: null,
+      autoOpenTriggered: false,
       frontendConfig: {
         payment_base_url: 'https://app.mews-demo.com/navigator/payment-requests/detail',
         default_currency: 'EUR',
@@ -135,6 +136,10 @@ export default {
         this.hasError = false
         this.errorMessage = ''
         this.progressPercent = 0
+        this.paymentReady = false
+        this.isRedirecting = false
+        this.paymentUrl = ''
+        this.autoOpenTriggered = false
 
         // Start progress animation
         this.progressInterval = setInterval(() => {
@@ -209,8 +214,20 @@ export default {
 
 
     openPayment() {
+      if (!this.paymentUrl) {
+        return
+      }
+
       // Open payment URL in new tab
-      this.paymentWindow = window.open(this.paymentUrl, '_blank')
+      const openedWindow = window.open(this.paymentUrl, '_blank')
+
+      // If popup blocked, leave the "Pay now" button available
+      if (!openedWindow) {
+        this.autoOpenTriggered = false
+        return
+      }
+
+      this.paymentWindow = openedWindow
 
       // Set redirecting state to show payment in progress
       this.paymentReady = false
@@ -225,6 +242,16 @@ export default {
     goHome() {
       // Reset the booking process
       this.$emit('reset-booking')
+    }
+  },
+
+  watch: {
+    // Automatically trigger the payment as soon as the request is ready
+    paymentReady(newVal) {
+      if (newVal && this.paymentUrl && !this.autoOpenTriggered) {
+        this.autoOpenTriggered = true
+        this.$nextTick(() => this.openPayment())
+      }
     }
   },
 
