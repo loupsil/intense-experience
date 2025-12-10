@@ -166,7 +166,9 @@ export default {
               Type: "Payment",
               Reason: "PaymentCardMissing",
               ExpirationUtc: new Date(Date.now() + expirationMs).toISOString(),
-              Description: `Payment for reservation ${this.reservation.Identifier}`,
+              Description: this.reservation.Identifier
+                ? `Payment for reservation ${this.reservation.Identifier}`
+                : '-',
               ReservationId: this.reservation.Id
             }
           ]
