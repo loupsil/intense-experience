@@ -434,7 +434,7 @@ export default {
         rate_id_journee_weekend: null,
         night_check_in_hour: 19,
         night_check_out_hour: 10,
-        early_check_in_hour: 18,
+        early_check_in_hour: 17,
         late_check_out_hour: 12,
         default_person_count: 2
       },
@@ -1109,12 +1109,13 @@ export default {
             return utcDate.toISOString()
           }
 
-          // Adjust check-in time if "Arrivée anticipée" is selected (18:00 Brussels time)
+          // Adjust check-in time if "Arrivée anticipée" is selected, using the configured early check-in hour
           if (this.hasArriveeAnticipee) {
-            startDate = createBrusselsTime(startDate, 18)
+            const earlyCheckInHour = this.frontendConfig.early_check_in_hour || 17
+            startDate = createBrusselsTime(startDate, earlyCheckInHour)
             
             if (this.debugMode) {
-              console.log('Adjusted check-in time for Arrivée anticipée to 18:00 Brussels time:', startDate)
+              console.log(`Adjusted check-in time for Arrivée anticipée to ${earlyCheckInHour}:00 Brussels time:`, startDate)
             }
           }
 

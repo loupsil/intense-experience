@@ -600,7 +600,7 @@ def create_reservation():
         # Brussels timezone
         brussels_tz = pytz.timezone(TIMEZONE)
         
-        # Adjust start_date if Arrivée anticipée is selected (change check-in to 18:00 Brussels time)
+        # Adjust start_date if Arrivée anticipée is selected (set to EARLY_CHECK_IN_HOUR in Brussels time)
         if has_arrivee_anticipee:
             start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
             # Convert to Brussels timezone
@@ -610,7 +610,7 @@ def create_reservation():
             # Convert back to UTC
             adjusted_start_utc = adjusted_start_brussels.astimezone(timezone.utc)
             start_date = adjusted_start_utc.isoformat().replace('+00:00', 'Z')
-            logger.info(f"Adjusted start time for Arrivée anticipée to 18:00 Brussels time (UTC: {start_date})")
+            logger.info(f"Adjusted start time for Arrivée anticipée to {EARLY_CHECK_IN_HOUR:02d}:00 Brussels time (UTC: {start_date})")
         
         # Adjust end_date if Départ tardif is selected (change check-out to 12:00 Brussels time)
         if has_depart_tardif:
@@ -837,7 +837,7 @@ def check_time_options_availability():
     """Check if early check-in and late check-out options are available for a nuitée booking
     
     Early check-in (Arrivée anticipée) is only available if the corresponding journée suite 
-    does not have a booking from 17:00 to 18:00 on the check-in date.
+    is free during the hour before the early check-in time on the check-in date.
     
     Late check-out (Départ tardif) is only available if the corresponding journée suite 
     does not have a booking from 12:00 to 13:00 on the check-out date.
@@ -881,9 +881,10 @@ def check_time_options_availability():
     check_out_date_only = check_out_brussels.date()
     
     # Create time slots to check in Brussels timezone
-    # Early check-in: check 17:00-18:00 on check-in date
-    early_checkin_start = brussels_tz.localize(datetime.combine(check_in_date_only, datetime.strptime('17:00', '%H:%M').time()))
-    early_checkin_end = brussels_tz.localize(datetime.combine(check_in_date_only, datetime.strptime('18:00', '%H:%M').time()))
+    # Early check-in: check the hour before the configured early check-in time
+    early_checkin_start_hour = max(EARLY_CHECK_IN_HOUR - 1, 0)
+    early_checkin_start = brussels_tz.localize(datetime.combine(check_in_date_only, datetime.strptime(f'{early_checkin_start_hour:02d}:00', '%H:%M').time()))
+    early_checkin_end = brussels_tz.localize(datetime.combine(check_in_date_only, datetime.strptime(f'{EARLY_CHECK_IN_HOUR:02d}:00', '%H:%M').time()))
     
     # Late check-out: check 12:00-13:00 on check-out date
     late_checkout_start = brussels_tz.localize(datetime.combine(check_out_date_only, datetime.strptime('12:00', '%H:%M').time()))
@@ -929,7 +930,7 @@ def check_time_options_availability():
         res_start_buffered = res_start - timedelta(hours=CLEANING_BUFFER_HOURS)
         res_end_buffered = res_end + timedelta(hours=CLEANING_BUFFER_HOURS)
         
-        # Check if reservation overlaps with early check-in slot (17:00-18:00 on check-in date)
+        # Check if reservation overlaps with early check-in slot (hour before early check-in on check-in date)
         if not (res_end_buffered <= early_checkin_start or res_start_buffered >= early_checkin_end):
             early_checkin_available = False
             logger.info(f"Early check-in blocked by reservation from {res_start} to {res_end} (with buffer: {res_start_buffered} to {res_end_buffered})")

@@ -92,7 +92,7 @@ if is_demo:
     NIGHT_CHECK_OUT_HOUR = 10  # 10:00 (10:00 AM)
 
     # Early check-in and late check-out hours (for options)
-    EARLY_CHECK_IN_HOUR = 18  # 18:00 (6:00 PM)
+    EARLY_CHECK_IN_HOUR = 17  # 17:00 (5:00 PM)
     LATE_CHECK_OUT_HOUR = 12  # 12:00 (12:00 PM)
 
     # =============================================================================
@@ -217,7 +217,7 @@ else:
     NIGHT_CHECK_OUT_HOUR = 10  # 10:00 (10:00 AM)
 
     # Early check-in and late check-out hours (for options)
-    EARLY_CHECK_IN_HOUR = 18  # 18:00 (6:00 PM)
+    EARLY_CHECK_IN_HOUR = 17  # 17:00 (5:00 PM)
     LATE_CHECK_OUT_HOUR = 12  # 12:00 (12:00 PM)
 
     # =============================================================================
