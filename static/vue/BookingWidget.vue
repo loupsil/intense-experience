@@ -98,6 +98,17 @@
       <!-- Step 3: Customer Information -->
       <div v-if="currentStep === 3" class="step">
         <h2>Your information</h2>
+        <div class="step-navigation desktop-nav top-nav">
+          <button class="prev-btn" @click="prevStep">Back</button>
+          <button
+            class="next-btn"
+            :disabled="customerCreationLoading"
+            @click="submitCustomerForm"
+          >
+            <span v-if="customerCreationLoading" class="button-spinner"></span>
+            {{ customerCreationLoading ? 'Creating profile...' : 'Continue' }}
+          </button>
+        </div>
         <CustomerForm
           ref="customerForm"
           :loading="loading"
@@ -120,6 +131,16 @@
       <!-- Step 4: Suite Selection -->
       <div v-if="currentStep === 4" class="step">
         <h2>Choose your suite</h2>
+        <div class="step-navigation desktop-nav top-nav">
+          <button class="prev-btn" @click="prevStep">Back</button>
+          <button
+            class="next-btn"
+            :disabled="!hasActiveSuiteSelection"
+            @click="nextStep"
+          >
+            Continue
+          </button>
+        </div>
         <SuiteSelector
           ref="suiteSelector"
           :service="selectedService"
@@ -1560,6 +1581,15 @@ h2 {
   margin-top: 30px;
 }
 
+.desktop-nav {
+  display: none;
+}
+
+.step-navigation.top-nav {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
 .sidebar-navigation {
   display: flex;
   flex-direction: column;
@@ -1735,6 +1765,10 @@ h2 {
     top: 20px;
     margin: 20px;
     order: 2;
+  }
+
+  .desktop-nav {
+    display: flex;
   }
 }
 
