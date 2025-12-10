@@ -18,6 +18,7 @@
                 <div class="month-header">
                   <button @click="previousMonth" class="nav-btn">&larr;</button>
                   <h4>{{ formatMonthYear(currentMonth) }}</h4>
+                  <button v-if="isMobile" @click="nextMonth" class="nav-btn">&rarr;</button>
                 </div>
                 <div class="calendar-header">
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
@@ -49,7 +50,7 @@
               </div>
 
               <!-- Next Month -->
-              <div class="month-calendar">
+              <div v-if="!isMobile" class="month-calendar">
                 <div class="month-header">
                   <h4>{{ formatMonthYear(nextMonthDate) }}</h4>
                   <button @click="nextMonth" class="nav-btn">&rarr;</button>
@@ -93,6 +94,7 @@
                 <div class="month-header">
                   <button @click="previousMonth" class="nav-btn">&larr;</button>
                   <h4>{{ formatMonthYear(currentMonth) }}</h4>
+                  <button v-if="isMobile" @click="nextMonth" class="nav-btn">&rarr;</button>
                 </div>
                 <div class="calendar-header">
                   <div v-for="day in weekDays" :key="day" class="calendar-header-day">{{ day }}</div>
@@ -126,7 +128,7 @@
               </div>
 
               <!-- Next Month -->
-              <div class="month-calendar">
+              <div v-if="!isMobile" class="month-calendar">
                 <div class="month-header">
                   <h4>{{ formatMonthYear(nextMonthDate) }}</h4>
                   <button @click="nextMonth" class="nav-btn">&rarr;</button>
@@ -257,7 +259,8 @@ export default {
       nightCheckOutHour: null,
       bookingLimitsLoaded: false,
       suiteIdMapping: {}, // Maps day service suite IDs to night service suite IDs
-      suiteIdMappingReverse: {} // Maps night service suite IDs to day service suite IDs
+      suiteIdMappingReverse: {}, // Maps night service suite IDs to day service suite IDs
+      isMobileView: window.innerWidth <= 768
     }
   },
   computed: {
@@ -275,7 +278,7 @@ export default {
       return next
     },
     isMobile() {
-      return window.innerWidth <= 768
+      return this.isMobileView
     }
   },
   watch: {
@@ -304,6 +307,8 @@ export default {
     }
   },
   async mounted() {
+    this.handleResize()
+    window.addEventListener('resize', this.handleResize)
     // Calendar is now always displayed for both day and night bookings
     // Fetch booking limits, suite mapping, and availability in parallel
     await Promise.all([
@@ -312,7 +317,13 @@ export default {
       this.fetchAvailabilityForDisplayedDates()
     ])
   },
+  beforeUnmount() {
+    window.removeEventListener('resize', this.handleResize)
+  },
   methods: {
+    handleResize() {
+      this.isMobileView = window.innerWidth <= 768
+    },
 
     async fetchBookingLimits() {
       try {
@@ -966,14 +977,16 @@ export default {
     },
 
     async previousMonth() {
-      this.currentMonth.setMonth(this.currentMonth.getMonth() - 2)
+      const step = this.isMobile ? 1 : 2
+      this.currentMonth.setMonth(this.currentMonth.getMonth() - step)
       this.currentMonth = new Date(this.currentMonth)
       // Fetch availability for newly displayed dates
       await this.fetchAvailabilityForDisplayedDates()
     },
 
     async nextMonth() {
-      this.currentMonth.setMonth(this.currentMonth.getMonth() + 2)
+      const step = this.isMobile ? 1 : 2
+      this.currentMonth.setMonth(this.currentMonth.getMonth() + step)
       this.currentMonth = new Date(this.currentMonth)
       // Fetch availability for newly displayed dates
       await this.fetchAvailabilityForDisplayedDates()
