@@ -185,13 +185,13 @@ def check_bulk_availability_journee(make_mews_request_func, data):
     availability_results = {}
 
     # Fetch resource blocks for the entire date range
-    # Use a wide buffer (7 days before/after) to catch multi-day blocks that might extend into our range
+    # Use a wide buffer (2 days before/after) to catch multi-day blocks that might extend into our range
     if sorted_dates:
         range_start = datetime.fromisoformat(sorted_dates[0].replace('Z', '+00:00'))
         range_end = datetime.fromisoformat(sorted_dates[-1].replace('Z', '+00:00')) + timedelta(days=1)
         # Add generous buffer to catch multi-day blocks that start before or end after our range
-        blocks_start = (range_start - timedelta(days=7)).isoformat()
-        blocks_end = (range_end + timedelta(days=7)).isoformat()
+        blocks_start = (range_start - timedelta(days=2)).isoformat()
+        blocks_end = (range_end + timedelta(days=2)).isoformat()
         resource_blocks = get_resource_blocks(make_mews_request_func, blocks_start, blocks_end)
     else:
         resource_blocks = []
@@ -438,13 +438,13 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
     availability_results = {}
 
     # Fetch resource blocks for the entire date range
-    # Use a wide buffer (7 days before/after) to catch multi-day blocks that might extend into our range
+    # Use a wide buffer (2 days before/after) to catch multi-day blocks that might extend into our range
     if sorted_dates:
         range_start = datetime.fromisoformat(sorted_dates[0].replace('Z', '+00:00'))
         range_end = datetime.fromisoformat(sorted_dates[-1].replace('Z', '+00:00')) + timedelta(days=2)  # +2 for night checkout next day
         # Add generous buffer to catch multi-day blocks that start before or end after our range
-        blocks_start = (range_start - timedelta(days=7)).isoformat()
-        blocks_end = (range_end + timedelta(days=7)).isoformat()
+        blocks_start = (range_start - timedelta(days=2)).isoformat()
+        blocks_end = (range_end + timedelta(days=2)).isoformat()
         resource_blocks = get_resource_blocks(make_mews_request_func, blocks_start, blocks_end)
     else:
         resource_blocks = []
