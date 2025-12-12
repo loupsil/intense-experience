@@ -323,10 +323,6 @@ def check_bulk_availability_journee(make_mews_request_func, data):
 
                 suite_availability[suite_id] = available_slots
 
-                # Special logging for December 10th, 2025 (before AND logic)
-                if "2025-12-10" in date_str:
-                    logger.info(f"DEC10-2025 | Suite {suite_id}: {len(available_slots)} available slots (before AND logic) - {available_slots}")
-
             # Apply AND logic for mapped suites: if either suite in a pair has 0 availability, both must have 0
             for suite_id in suite_ids:
                 # Check if this suite has a mapped counterpart
@@ -337,14 +333,6 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                     if len(suite_availability[suite_id]) == 0 or len(suite_availability[mapped_suite_id]) == 0:
                         suite_availability[suite_id] = []
                         suite_availability[mapped_suite_id] = []
-                        
-                        if "2025-12-10" in date_str:
-                            logger.info(f"DEC10-2025 | AND logic applied: Suite {suite_id} and {mapped_suite_id} both set to 0 slots")
-
-            # Special logging for December 10th, 2025 (after AND logic)
-            if "2025-12-10" in date_str:
-                for suite_id in suite_ids:
-                    logger.info(f"DEC10-2025 | FINAL Suite {suite_id}: {len(suite_availability[suite_id])} available slots")
 
             # Date is available if at least one suite has at least one available slot
             has_available_slot = any(len(slots) > 0 for slots in suite_availability.values())
