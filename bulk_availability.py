@@ -27,6 +27,8 @@ from config import (
 
 # Configure logging
 logger = logging.getLogger(__name__)
+# Reuse timezone object in hot paths
+BELGIAN_TZ = pytz.timezone(TIMEZONE)
 
 
 def get_resource_ids_for_suites(suite_ids):
@@ -116,10 +118,6 @@ def check_resource_block_conflict(slot_start, slot_end, resource_ids, resource_b
         # Check for overlap (slot vs block - no buffer applied to blocks)
         # Overlap exists if: NOT (slot_end <= block_start OR slot_start >= block_end)
         if not (slot_end <= block_start or slot_start >= block_end):
-            if is_building_block:
-                logger.debug(f"Building-level block conflict: slot {slot_start}-{slot_end} overlaps with block {block_start}-{block_end}")
-            else:
-                logger.debug(f"Resource block conflict: slot {slot_start}-{slot_end} overlaps with block {block_start}-{block_end}")
             return True
     
     return False
@@ -177,6 +175,11 @@ def check_bulk_availability_journee(make_mews_request_func, data):
     # used to determine the minimum duration for that specific suite.
 
     suite_ids = [suite["Id"] for suite in all_suites]
+    # Cache resource IDs per suite to avoid recomputing in the hot loop
+    resource_ids_cache = {
+        suite_id: get_resource_ids_for_suites([suite_id])
+        for suite_id in suite_ids
+    }
 
     logger.info(f"Found {len(suite_ids)} active suites (selected_suite_id: {selected_suite_id})")
 
@@ -200,6 +203,26 @@ def check_bulk_availability_journee(make_mews_request_func, data):
     CHUNK_SIZE_DAYS = 4
     MAX_HOURS_PER_CHUNK = 96
     MAX_CONCURRENT_REQUESTS = 15
+
+    # Pre-generate valid slots per minimum-hour rule to skip repeated duration checks
+    valid_slots_by_min_hours = {}
+
+    def get_valid_slots(min_hours):
+        if min_hours in valid_slots_by_min_hours:
+            return valid_slots_by_min_hours[min_hours]
+
+        slots = []
+        for arrival_time in ARRIVAL_TIMES:
+            arr_hour = int(arrival_time.split(':')[0])
+            for departure_time in DEPARTURE_TIMES:
+                dep_hour = int(departure_time.split(':')[0])
+                duration = dep_hour - arr_hour
+                if duration < min_hours or duration > DAY_MAX_HOURS:
+                    continue
+                slots.append((arrival_time, departure_time, duration))
+
+        valid_slots_by_min_hours[min_hours] = slots
+        return slots
 
     def process_chunk(chunk_index, chunk_dates):
         """Process a single chunk of dates for day bookings"""
@@ -232,6 +255,22 @@ def check_bulk_availability_journee(make_mews_request_func, data):
         # Get reservations (empty list if no reservations found)
         reservations = result.get("Reservations", [])
         logger.info(f"Found {len(reservations)} reservations in chunk {chunk_index + 1}")
+        # Group reservations by suite once per chunk to avoid scanning all reservations per slot
+        reservations_by_suite = {}
+        for reservation in reservations:
+            suite_id = reservation.get('RequestedCategoryId')
+            if not suite_id:
+                continue
+            start_raw = reservation.get('StartUtc', '')
+            end_raw = reservation.get('EndUtc', '')
+            if not start_raw or not end_raw:
+                continue
+            res_start_utc = datetime.fromisoformat(start_raw.replace('Z', '+00:00'))
+            res_end_utc = datetime.fromisoformat(end_raw.replace('Z', '+00:00'))
+            reservations_by_suite.setdefault(suite_id, []).append({
+                "start": res_start_utc.astimezone(BELGIAN_TZ),
+                "end": res_end_utc.astimezone(BELGIAN_TZ),
+            })
 
         # Check each date (process all dates, even if no reservations)
         for date_str in chunk_dates:
@@ -257,69 +296,55 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                 # Generate all possible time slot combinations
                 available_slots = []
 
-                for arrival_time in ARRIVAL_TIMES:
-                    for departure_time in DEPARTURE_TIMES:
-                        # Calculate duration
-                        arr_hour = int(arrival_time.split(':')[0])
-                        dep_hour = int(departure_time.split(':')[0])
-                        duration = dep_hour - arr_hour
+                for arrival_time, departure_time, duration in get_valid_slots(min_hours):
+                    # Create datetime objects for this slot (timezone-aware to match reservations)
+                    slot_start = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()))
+                    slot_end = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()))
 
-                        # Check if duration meets minimum and maximum requirements
-                        if duration < min_hours or duration > DAY_MAX_HOURS:
-                            continue
+                    # Check if this slot conflicts with any reservation
+                    # For suites in SUITE_ID_MAPPING, check BOTH day and night suites (AND rule)
+                    suite_ids_to_check = [suite_id]
 
-                        # Create datetime objects for this slot (timezone-aware to match reservations)
-                        belgian_tz = pytz.timezone(TIMEZONE)
-                        slot_start = belgian_tz.localize(datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()))
-                        slot_end = belgian_tz.localize(datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()))
+                    # Check if this suite has a corresponding mapped suite ID
+                    mapped_suite_id = SUITE_ID_MAPPING.get(suite_id)
+                    if mapped_suite_id:
+                        suite_ids_to_check.append(mapped_suite_id)
 
-                        # Check if this slot conflicts with any reservation
-                        # For suites in SUITE_ID_MAPPING, check BOTH day and night suites (AND rule)
-                        suite_ids_to_check = [suite_id]
+                    # Collect relevant reservations for the suite(s) involved
+                    suite_reservations = []
+                    for sid in suite_ids_to_check:
+                        suite_reservations.extend(reservations_by_suite.get(sid, []))
 
-                        # Check if this suite has a corresponding mapped suite ID
-                        mapped_suite_id = SUITE_ID_MAPPING.get(suite_id)
-                        if mapped_suite_id:
-                            suite_ids_to_check.append(mapped_suite_id)
+                    is_available = True
+                    for reservation in suite_reservations:
+                        res_start = reservation["start"]
+                        res_end = reservation["end"]
 
-                        is_available = True
-                        for reservation in reservations:
-                            res_requested_category = reservation.get('RequestedCategoryId')
+                        # Apply buffer to existing reservations (1 hour before and 1 hour after)
+                        res_start_buffered = res_start - timedelta(hours=CLEANING_BUFFER_HOURS)
+                        res_end_buffered = res_end + timedelta(hours=CLEANING_BUFFER_HOURS)
 
-                            # Only check reservations for the suite IDs we need to consider
-                            if res_requested_category not in suite_ids_to_check:
-                                continue
+                        # Check for overlap (new slot WITHOUT buffer vs existing reservation WITH buffer)
+                        if not (slot_end <= res_start_buffered or slot_start >= res_end_buffered):
+                            is_available = False
+                            break
 
-                            res_start_utc = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
-                            res_end_utc = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+                    # Also check for resource block conflicts (if still available after reservation check)
+                    if is_available:
+                        # Get resource IDs for all suite categories we need to check (cached)
+                        resource_ids_to_check = []
+                        for sid in suite_ids_to_check:
+                            resource_ids_to_check.extend(resource_ids_cache.get(sid, []))
+                        
+                        if check_resource_block_conflict(slot_start, slot_end, resource_ids_to_check, resource_blocks):
+                            is_available = False
 
-                            # Convert to Brussels timezone for comparison
-                            res_start = res_start_utc.astimezone(belgian_tz)
-                            res_end = res_end_utc.astimezone(belgian_tz)
-
-                            # Apply buffer to existing reservations (1 hour before and 1 hour after)
-                            res_start_buffered = res_start - timedelta(hours=CLEANING_BUFFER_HOURS)
-                            res_end_buffered = res_end + timedelta(hours=CLEANING_BUFFER_HOURS)
-
-                            # Check for overlap (new slot WITHOUT buffer vs existing reservation WITH buffer)
-                            if not (slot_end <= res_start_buffered or slot_start >= res_end_buffered):
-                                is_available = False
-                                break
-
-                        # Also check for resource block conflicts (if still available after reservation check)
-                        if is_available:
-                            # Get resource IDs for all suite categories we need to check
-                            resource_ids_to_check = get_resource_ids_for_suites(suite_ids_to_check)
-                            
-                            if check_resource_block_conflict(slot_start, slot_end, resource_ids_to_check, resource_blocks):
-                                is_available = False
-
-                        if is_available:
-                            available_slots.append({
-                                'arrival': arrival_time,
-                                'departure': departure_time,
-                                'duration': duration
-                            })
+                    if is_available:
+                        available_slots.append({
+                            'arrival': arrival_time,
+                            'departure': departure_time,
+                            'duration': duration
+                        })
 
                 suite_availability[suite_id] = available_slots
 
