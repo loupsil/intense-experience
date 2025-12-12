@@ -255,7 +255,10 @@ export default {
       bookingType: this.bookingType,
       service: this.service
     })
-    await this.fetchFrontendConfig()
+    // Set the background immediately so the panel isn't dark while data loads
+    this.updateBackgroundColors()
+    // Load config/limits in parallel; no need to block UI styling on them
+    this.fetchFrontendConfig()
     this.fetchBookingLimits()
     this.$nextTick(() => {
       this.updateBackgroundColors()
