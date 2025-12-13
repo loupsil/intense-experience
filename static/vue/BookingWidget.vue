@@ -3,8 +3,8 @@
     <div class="booking-container">
       <!-- Quick Booking Header -->
       <div v-if="currentStep === 2" class="quick-booking-header">
-        <h2>Quick booking</h2>
-        <p>Add your travel dates for exact pricing</p>
+        <h2>Planifier votre moment d'exception</h2>
+        <p>{{ bookingSubtitleText }}</p>
       </div>
 
       <!-- Debug Timeline -->
@@ -91,22 +91,22 @@
           @suite-reselected="handleSuiteReselected"
         />
         <div class="step-navigation">
-          <button v-if="currentStep !== 2" class="prev-btn" @click="prevStep">Back</button>
+          <button v-if="currentStep !== 2" class="prev-btn" @click="prevStep">Retour</button>
         </div>
       </div>
 
       <!-- Step 3: Customer Information -->
       <div v-if="currentStep === 3" class="step">
-        <h2>Your information</h2>
+        <h2>Complétez vos informations</h2>
         <div class="step-navigation desktop-nav top-nav">
-          <button class="prev-btn" @click="prevStep">Back</button>
+          <button class="prev-btn" @click="prevStep">Retour</button>
           <button
             class="next-btn"
             :disabled="customerCreationLoading"
             @click="submitCustomerForm"
           >
             <span v-if="customerCreationLoading" class="button-spinner"></span>
-            {{ customerCreationLoading ? 'Creating profile...' : 'Continue' }}
+            {{ customerCreationLoading ? 'Création du profil...' : 'Étape suivante' }}
           </button>
         </div>
         <CustomerForm
@@ -116,29 +116,29 @@
           @customer-info="handleCustomerInfo"
         />
         <div class="step-navigation">
-          <button class="prev-btn" @click="prevStep">Back</button>
+          <button class="prev-btn" @click="prevStep">Retour</button>
           <button
             class="next-btn"
             :disabled="customerCreationLoading"
             @click="submitCustomerForm"
           >
             <span v-if="customerCreationLoading" class="button-spinner"></span>
-            {{ customerCreationLoading ? 'Creating profile...' : 'Continue' }}
+            {{ customerCreationLoading ? 'Création du profil...' : 'Étape suivante' }}
           </button>
         </div>
       </div>
 
       <!-- Step 4: Suite Selection -->
       <div v-if="currentStep === 4" class="step">
-        <h2>Choose your suite</h2>
+        <h2>Choisissez votre suite ou chambre</h2>
         <div class="step-navigation desktop-nav top-nav">
-          <button class="prev-btn" @click="prevStep">Back</button>
+          <button class="prev-btn" @click="prevStep">Retour</button>
           <button
             class="next-btn"
             :disabled="!hasActiveSuiteSelection"
             @click="nextStep"
           >
-            Continue
+            Étape suivante
           </button>
         </div>
         <SuiteSelector
@@ -157,20 +157,20 @@
           @pricing-requested="handlePricingRequest"
         />
         <div class="step-navigation">
-          <button class="prev-btn" @click="prevStep">Back</button>
+          <button class="prev-btn" @click="prevStep">Retour</button>
           <button
             class="next-btn"
             :disabled="!hasActiveSuiteSelection"
             @click="nextStep"
           >
-            Continue
+            Étape suivante
           </button>
         </div>
       </div>
 
       <!-- Step 5: Options & Upsells -->
       <div v-if="currentStep === 5" class="step">
-        <h2>Additional options</h2>
+        <h2>Sélectionnez vos options</h2>
         <OptionsSelector
           :products="availableProducts"
           :selected-options="selectedOptions"
@@ -207,14 +207,14 @@
         </div>
         <!-- Step navigation - shown when sidebar is not visible (mobile) -->
         <div v-if="!showSidebar" class="step-navigation">
-          <button class="prev-btn" @click="prevStep">Back</button>
+          <button class="prev-btn" @click="prevStep">Retour</button>
           <button
             class="next-btn"
             :disabled="reservationCreationLoading"
             @click="nextStep"
           >
             <span v-if="reservationCreationLoading" class="button-spinner"></span>
-            {{ reservationCreationLoading ? '' : 'Continue' }}
+            {{ reservationCreationLoading ? '' : 'Je confirme ma réservation' }}
           </button>
         </div>
         <!-- Reservation error message - mobile -->
@@ -347,14 +347,14 @@
         </div>
       </div>
       <div class="sidebar-navigation">
-        <button class="prev-btn" @click="prevStep">Back</button>
+        <button class="prev-btn" @click="prevStep">Retour</button>
         <button
           class="next-btn"
           :disabled="reservationCreationLoading"
           @click="nextStep"
         >
           <span v-if="reservationCreationLoading" class="button-spinner"></span>
-          {{ reservationCreationLoading ? '' : 'Continue' }}
+          {{ reservationCreationLoading ? '' : 'Je confirme ma réservation' }}
         </button>
       </div>
       <!-- Reservation error message - desktop sidebar -->
@@ -473,6 +473,15 @@ export default {
 
     suiteForBooking() {
       return this.hasActiveSuiteSelection ? this.selectedSuite : null
+    },
+
+    bookingSubtitleText() {
+      if (this.getServiceType() === 'journée') {
+        return 'Sélectionnez la date et les heures de votre après-midi de détente'
+      } else if (this.getServiceType() === 'nuitée') {
+        return 'Sélectionnez vos dates d\'arrivée et de départ'
+      }
+      return 'Ajoutez vos dates de voyage pour un tarif précis'
     },
 
     bookingSubtitle() {
@@ -1807,7 +1816,7 @@ h2 {
   }
 
   .step-navigation {
-    flex-direction: column;
+    flex-direction: column-reverse;
   }
 
   .step-navigation button {
@@ -1815,7 +1824,7 @@ h2 {
   }
 
   .sidebar-navigation {
-    flex-direction: column;
+    flex-direction: column-reverse;
   }
 
   .sidebar-navigation button {

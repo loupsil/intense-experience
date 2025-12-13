@@ -56,8 +56,7 @@
           {{ validationMessage }}
         </div>
 
-        <button class="book-btn" :disabled="!canBook" @click="bookSuite">BOOK A SUITE</button>
-        <div class="no-charge-text">You won't be charged yet</div>
+        <button class="book-btn" :disabled="!canBook" @click="bookSuite">Étape suivante</button>
       </div>
     </div>
 
@@ -79,8 +78,7 @@
           {{ validationMessage }}
         </div>
 
-        <button class="book-btn" :disabled="!canBook" @click="bookSuite">BOOK A SUITE</button>
-        <div class="no-charge-text">You won't be charged yet</div>
+        <button class="book-btn" :disabled="!canBook" @click="bookSuite">Étape suivante</button>
       </div>
     </div>
   </div>

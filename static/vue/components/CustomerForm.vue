@@ -2,7 +2,6 @@
   <div class="customer-form" ref="customerForm">
     <form @submit.prevent="submitForm">
       <div class="form-section">
-        <h3>Personal Information</h3>
 
         <div class="form-row">
           <div class="form-group">

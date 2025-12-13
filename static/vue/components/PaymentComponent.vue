@@ -26,7 +26,7 @@
           Retry
         </button>
         <button class="home-btn" @click="goHome">
-          Back to home
+          Retour à l'accueil
         </button>
       </div>
     </div>
