@@ -94,6 +94,10 @@ export default {
     checkOutDate: {
       type: String,
       default: ''
+    },
+    ratePrice: {
+      type: Number,
+      default: 0
     }
   },
   data() {
@@ -249,6 +253,18 @@ export default {
     },
 
     getBasePrice(product) {
+      // Handle relative pricing (e.g., Arrivée anticipée, Départ tardif)
+      // These products are priced as a percentage of the night rate
+      if (product.Pricing && product.Pricing.Discriminator === 'Relative') {
+        const multiplier = product.Pricing.Value?.Multiplier
+        if (typeof multiplier === 'number' && this.ratePrice > 0) {
+          // Calculate price as percentage of the rate price
+          return Math.round(this.ratePrice * multiplier * 100) / 100
+        }
+        // If no rate price available, return null
+        return null
+      }
+
       if (product.Price && typeof product.Price.GrossValue === 'number') {
         return product.Price.GrossValue
       }

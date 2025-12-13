@@ -181,6 +181,7 @@
           :selected-suite="suiteForBooking"
           :check-in-date="selectedDates.start"
           :check-out-date="selectedDates.end"
+          :rate-price="numberOfNights > 0 ? pricing.total / numberOfNights : pricing.total"
           @options-updated="updateOptions"
           @products-loaded="handleProductsLoaded"
         />
