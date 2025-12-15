@@ -42,9 +42,6 @@
         </div>
 
 
-        <div class="category-badge-container">
-          <span class="category-badge">{{ getCategoryName(product) }}</span>
-        </div>
 
         <div class="selection-indicator">
           <i :class="isSelected(product) ? 'fas fa-check-circle' : 'far fa-circle'"></i>

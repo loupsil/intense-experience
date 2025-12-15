@@ -3,7 +3,7 @@
     <div class="booking-container">
       <!-- Quick Booking Header -->
       <div v-if="currentStep === 2" class="quick-booking-header">
-        <h2>Planifier votre moment d'exception</h2>
+        <h2>{{ bookingHeaderText }}</h2>
         <p>{{ bookingSubtitleText }}</p>
       </div>
 
@@ -130,7 +130,7 @@
 
       <!-- Step 4: Suite Selection -->
       <div v-if="currentStep === 4" class="step">
-        <h2>Choisissez votre suite ou chambre</h2>
+        <h2>Choisissez votre suite</h2>
         <div class="step-navigation desktop-nav top-nav">
           <button class="prev-btn" @click="prevStep">Retour</button>
           <button
@@ -171,6 +171,8 @@
       <!-- Step 5: Options & Upsells -->
       <div v-if="currentStep === 5" class="step">
         <h2>Sélectionnez vos options</h2>
+        <p class="options-subtitle">Faites-vous plaisir et rendez votre séjour encore plus inoubliable</p>
+
         <OptionsSelector
           :products="availableProducts"
           :selected-options="selectedOptions"
@@ -207,16 +209,16 @@
           </div>
         </div>
         <!-- Step navigation - shown when sidebar is not visible (mobile) -->
-        <div v-if="!showSidebar" class="step-navigation">
-          <button class="prev-btn" @click="prevStep">Retour</button>
+        <div v-if="!showSidebar" class="step-navigation confirm-navigation">
           <button
-            class="next-btn"
+            class="next-btn confirm-btn"
             :disabled="reservationCreationLoading"
             @click="nextStep"
           >
             <span v-if="reservationCreationLoading" class="button-spinner"></span>
             {{ reservationCreationLoading ? '' : 'Je confirme ma réservation' }}
           </button>
+          <button class="prev-btn spaced-prev-btn" @click="prevStep">Retour</button>
         </div>
         <!-- Reservation error message - mobile -->
         <div v-if="!showSidebar && reservationError" class="reservation-error">
@@ -273,8 +275,8 @@
         <!-- Night booking confirmation -->
         <div v-else class="confirmation-message">
           <i class="fas fa-check-circle"></i>
-          <h2>Reservation confirmed!</h2>
-          <p>Your reservation has been created successfully. Please note that payment of 50% is required for your reservation to be fully validated.</p>
+          <h2>Félicitations ! Votre réservation a été enregistrée avec succès.</h2>
+          <p class="confirmation-subtitle">Veuillez procéder au paiement de l'acompte pour garantir votre sélection.</p>
           <div class="reservation-details">
             <h3>Your reservation details</h3>
             <div class="detail-item">
@@ -348,15 +350,15 @@
         </div>
       </div>
       <div class="sidebar-navigation">
-        <button class="prev-btn" @click="prevStep">Retour</button>
         <button
-          class="next-btn"
+          class="next-btn confirm-btn"
           :disabled="reservationCreationLoading"
           @click="nextStep"
         >
           <span v-if="reservationCreationLoading" class="button-spinner"></span>
           {{ reservationCreationLoading ? '' : 'Je confirme ma réservation' }}
         </button>
+        <button class="prev-btn spaced-prev-btn" @click="prevStep">Retour</button>
       </div>
       <!-- Reservation error message - desktop sidebar -->
       <div v-if="reservationError" class="reservation-error">
@@ -474,6 +476,15 @@ export default {
 
     suiteForBooking() {
       return this.hasActiveSuiteSelection ? this.selectedSuite : null
+    },
+
+    bookingHeaderText() {
+      if (this.getServiceType() === 'journée') {
+        return 'Planifier votre moment d\'exception'
+      } else if (this.getServiceType() === 'nuitée') {
+        return 'Planifier votre nuitée d\'exception'
+      }
+      return 'Planifier votre moment d\'exception'
     },
 
     bookingSubtitleText() {
@@ -1571,6 +1582,18 @@ h2 {
   opacity: 0.5;
 }
 
+.confirm-btn {
+  background: #209673 !important;
+}
+
+.confirm-btn:hover:not(:disabled) {
+  background: #1a7558 !important;
+}
+
+.spaced-prev-btn {
+  margin-top: 10px;
+}
+
 .button-spinner {
   display: inline-block;
   width: 14px;
@@ -1622,6 +1645,23 @@ h2 {
   margin: 5px 0 15px 0;
   font-weight: 500;
   text-align: left;
+}
+.options-subtitle {
+  font-size: 16px;
+  color: var(--secondary-text-color, #666);
+  margin: 12px 0 30px 0;
+  font-weight: 400;
+  text-align: center;
+  font-style: italic;
+}
+
+.confirmation-subtitle {
+  font-size: 16px;
+  color: var(--secondary-text-color, #666);
+  margin: 8px 0 20px 0;
+  font-weight: 400;
+  text-align: center;
+  font-style: italic;
 }
 
 .summary-item {
@@ -1820,12 +1860,16 @@ h2 {
     flex-direction: column-reverse;
   }
 
+  .step-navigation.confirm-navigation {
+    flex-direction: column;
+  }
+
   .step-navigation button {
     margin: 5px 0;
   }
 
   .sidebar-navigation {
-    flex-direction: column-reverse;
+    flex-direction: column;
   }
 
   .sidebar-navigation button {
