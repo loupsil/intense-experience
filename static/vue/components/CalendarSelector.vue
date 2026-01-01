@@ -117,8 +117,6 @@
                       'other-suite-night': getOtherSuitesAvailabilityFlags(date).night,
                       'past': isDateInPast(date),
                       'other-month': !isDateInCurrentMonth(date, currentMonth),
-                      'diagonal-overlay': getDiagonalOverlayState(date, getDaysInMonth(currentMonth)).normal,
-                      'diagonal-overlay-reverse': getDiagonalOverlayState(date, getDaysInMonth(currentMonth)).reverse
                     }"
                     @click="!availabilityLoading && selectNightDate(date)"
                   >
@@ -154,8 +152,6 @@
                       'night-availability': getNuiteeAvailabilityFlags(date).night,
                       'past': isDateInPast(date),
                       'other-month': !isDateInCurrentMonth(date, nextMonthDate),
-                      'diagonal-overlay': getDiagonalOverlayState(date, getDaysInMonth(nextMonthDate)).normal,
-                      'diagonal-overlay-reverse': getDiagonalOverlayState(date, getDaysInMonth(nextMonthDate)).reverse
                     }"
                     @click="!availabilityLoading && selectNightDate(date)"
                   >
@@ -1128,41 +1124,6 @@ export default {
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
     },
 
-
-
-    getDiagonalOverlayState(date, datesArray) {
-      // Only apply if current date is available
-      if (!this.isDateAvailable(date)) {
-        return { normal: false, reverse: false }
-      }
-
-      // Find the index of this date in the dates array
-      const dateIndex = datesArray.findIndex(d => d.toDateString() === date.toDateString())
-      if (dateIndex === -1) {
-        return { normal: false, reverse: false }
-      }
-
-      let normal = false
-      let reverse = false
-
-      // Check for normal overlay (left unavailable, right available)
-      if (dateIndex % 7 !== 0) {
-        const previousDate = datesArray[dateIndex - 1]
-        if (previousDate && !this.isDateAvailable(previousDate)) {
-          normal = true
-        }
-      }
-
-      // Check for reverse overlay (right unavailable, left available)
-      if (dateIndex % 7 !== 6) {
-        const nextDate = datesArray[dateIndex + 1]
-        if (nextDate && !this.isDateAvailable(nextDate)) {
-          reverse = true
-        }
-      }
-
-      return { normal, reverse }
-    }
   }
 }
 </script>
