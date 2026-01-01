@@ -873,65 +873,65 @@ export default {
     },
 
     selectNightDate(date) {
-      console.log('SELECTION LOL selectNightDate called with date:', date)
+      console.log('SELECTION selectNightDate called with date:', date)
       
       // Not allowing selection of past dates
       if (this.isDateInPast(date)) {
-        console.log('SELECTION LOL Date is in past, returning')
+        console.log('SELECTION Date is in past, returning')
         return
       }
 
       const selectedDate = new Date(date)
-      console.log('SELECTION LOL selectedDate:', selectedDate)
-      console.log('SELECTION LOL selectionMode:', this.selectionMode)
-      console.log('SELECTION LOL selectedDates.start:', this.selectedDates.start)
+      console.log('SELECTION selectedDate:', selectedDate)
+      console.log('SELECTION selectionMode:', this.selectionMode)
+      console.log('SELECTION selectedDates.start:', this.selectedDates.start)
       
       let isSelectingStart = this.selectionMode === 'start' || !this.selectedDates.start
-      console.log('SELECTION LOL isSelectingStart (initial):', isSelectingStart)
+      console.log('SELECTION isSelectingStart (initial):', isSelectingStart)
 
       // Resetting selection mode if selecting end date and start date is already selected
       if (!isSelectingStart && this.selectedDates.start && selectedDate <= this.selectedDates.start) {
-        console.log('SELECTION LOL Resetting to start selection (selected date <= start date)')
+        console.log('SELECTION Resetting to start selection (selected date <= start date)')
         isSelectingStart = true
       }
-      console.log('SELECTION LOL isSelectingStart (final):', isSelectingStart)
+      console.log('SELECTION isSelectingStart (final):', isSelectingStart)
 
       const availabilityFlags = this.getNuiteeAvailabilityFlags(date)
       const otherSuitesAvailability = this.getOtherSuitesAvailabilityFlags(date)
-      console.log('SELECTION LOL availabilityFlags:', availabilityFlags)
-      console.log('SELECTION LOL otherSuitesAvailability:', otherSuitesAvailability)
+      console.log('SELECTION availabilityFlags:', availabilityFlags)
+      console.log('SELECTION otherSuitesAvailability:', otherSuitesAvailability)
 
       const slotAvailable = isSelectingStart ? availabilityFlags.night : availabilityFlags.morning
-      console.log('SELECTION LOL slotAvailable:', slotAvailable)
+      console.log('SELECTION slotAvailable:', slotAvailable)
 
       //For the start, not allowing selection of evening that are not available for all suites
       if (isSelectingStart && !availabilityFlags.night && !otherSuitesAvailability.night) {
-        console.log('SELECTION LOL Start date not available (no night availability), returning')
+        console.log('SELECTION Start date not available (no night availability), returning')
         return
       }
 
       if (isSelectingStart) {
         // Selecting start date
-        console.log('SELECTION LOL Selecting start date')
+        console.log('SELECTION Selecting start date')
         this.selectedDates.start = new Date(selectedDate)
         this.selectedDates.start.setHours(this.nightCheckInHour, 0, 0, 0)
-        console.log('SELECTION LOL Start date set to:', this.selectedDates.start)
+        console.log('SELECTION Start date set to:', this.selectedDates.start)
         this.selectedDates.end = null
         this.selectionMode = 'end'
-        console.log('SELECTION LOL Selection mode changed to end')
+        console.log('SELECTION Selection mode changed to end')
       } else {
-        console.log('SELECTION LOL Selecting end date')
+        console.log('SELECTION Selecting end date')
         
         // For night bookings with suite selection, allow ranges that include golden dates
         // but clear suite selection if any date in range needs it
         const rangeNeedsSuiteClearing = this.isDateRangePartiallyAvailable(this.selectedDates.start, selectedDate)
-        console.log('SELECTION LOL rangeNeedsSuiteClearing:', rangeNeedsSuiteClearing)
+        console.log('SELECTION rangeNeedsSuiteClearing:', rangeNeedsSuiteClearing)
         
         const rangeFullyAvailable = this.isDateRangeFullyAvailable(this.selectedDates.start, selectedDate)
-        console.log('SELECTION LOL rangeFullyAvailable:', rangeFullyAvailable)
+        console.log('SELECTION rangeFullyAvailable:', rangeFullyAvailable)
         
         if (!rangeFullyAvailable && !rangeNeedsSuiteClearing) {
-          console.log('SELECTION LOL Range not fully available and does not need suite clearing, resetting selection')
+          console.log('SELECTION Range not fully available and does not need suite clearing, resetting selection')
           this.resetSelection() // Reset selection when invalid range is selected
           return
         }
@@ -939,24 +939,24 @@ export default {
         // Set end date
         this.selectedDates.end = new Date(selectedDate)
         this.selectedDates.end.setHours(this.nightCheckOutHour, 0, 0, 0)
-        console.log('SELECTION LOL End date set to:', this.selectedDates.end)
+        console.log('SELECTION End date set to:', this.selectedDates.end)
         this.selectionMode = 'start'
-        console.log('SELECTION LOL Selection mode changed to start')
+        console.log('SELECTION Selection mode changed to start')
 
         // If this date or range needs suite clearing (includes golden cells), emit the event
         if (rangeNeedsSuiteClearing) {
-          console.log('SELECTION LOL CalendarSelector: Golden end date or range selected for night booking, clearing suite selection')
+          console.log('SELECTION CalendarSelector: Golden end date or range selected for night booking, clearing suite selection')
           this.$emit('suite-deselected')
         } else {
           // If the end date and range are fully available for the selected suite, reset suite selection if it was previously cleared
-          console.log('SELECTION LOL CalendarSelector: Fully available end date and range selected for night booking, resetting suite selection')
+          console.log('SELECTION CalendarSelector: Fully available end date and range selected for night booking, resetting suite selection')
           this.$emit('suite-reselected')
         }
 
         // Emit date selection when both dates are selected for pricing calculation
-        console.log('SELECTION LOL CalendarSelector emitting preliminary date-selected for night booking')
-        console.log('SELECTION LOL Emitting with start:', this.selectedDates.start.toISOString())
-        console.log('SELECTION LOL Emitting with end:', this.selectedDates.end.toISOString())
+        console.log('SELECTION CalendarSelector emitting preliminary date-selected for night booking')
+        console.log('SELECTION Emitting with start:', this.selectedDates.start.toISOString())
+        console.log('SELECTION Emitting with end:', this.selectedDates.end.toISOString())
         this.$emit('date-selected', {
           start: this.selectedDates.start.toISOString(),
           end: this.selectedDates.end.toISOString(),
