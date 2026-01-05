@@ -509,6 +509,19 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
 
             # Group reservations by date with timezone-aware comparisons
             belgian_tz = pytz.timezone(TIMEZONE)
+            
+            # Pre-compute timezone conversions for all reservations (outside the date loop)
+            reservation_times = {}
+            for reservation in reservations:
+                res_id = id(reservation)
+                res_start_utc = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
+                res_end_utc = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
+                # Convert to Brussels timezone for comparison with date boundaries
+                reservation_times[res_id] = {
+                    'start': res_start_utc.astimezone(belgian_tz),
+                    'end': res_end_utc.astimezone(belgian_tz)
+                }
+            
             reservations_by_date = {}
             for date_str in chunk_dates:
                 date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
@@ -520,12 +533,9 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
 
                 # Filter reservations that overlap with this specific date
                 for reservation in reservations:
-                    res_start_utc = datetime.fromisoformat(reservation.get('StartUtc', '').replace('Z', '+00:00'))
-                    res_end_utc = datetime.fromisoformat(reservation.get('EndUtc', '').replace('Z', '+00:00'))
-                    
-                    # Convert to Brussels timezone for comparison with date boundaries
-                    res_start = res_start_utc.astimezone(belgian_tz)
-                    res_end = res_end_utc.astimezone(belgian_tz)
+                    res_times = reservation_times[id(reservation)]
+                    res_start = res_times['start']
+                    res_end = res_times['end']
 
                     # Check if reservation overlaps with this date (timezone-aware)
                     # A reservation overlaps if it starts before the date ends AND ends after the date starts
