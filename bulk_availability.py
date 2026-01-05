@@ -550,7 +550,7 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
     # Process dates in chunks with parallel execution to speed up fetching
     CHUNK_SIZE_DAYS = 4  # Mews API limitation: max 4 days per chunk
     MAX_HOURS_PER_CHUNK = 96
-    MAX_CONCURRENT_REQUESTS = 20
+    MAX_CONCURRENT_REQUESTS = 2
     
     def process_chunk(chunk_index, chunk_dates):
         """Process a single chunk of dates - returns availability data for all dates in chunk"""
