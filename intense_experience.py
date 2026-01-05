@@ -76,20 +76,20 @@ def make_mews_request(endpoint, payload):
     })
 
     try:
-        logger.debug(f"Making request to: {url}")
-        logger.debug(f"Request payload: {payload}")
+        #logger.debug(f"Making request to: {url}")
+        #logger.debug(f"Request payload: {payload}")
         
         response = requests.post(url, json=payload)
         
-        logger.debug(f"Response status code: {response.status_code}")
-        logger.debug(f"Response headers: {dict(response.headers)}")
+        #logger.debug(f"Response status code: {response.status_code}")
+        #logger.debug(f"Response headers: {dict(response.headers)}")
         
         # Try to get response body even on error
         try:
             response_json = response.json()
-            logger.debug(f"Response body: {response_json}")
+            #logger.debug(f"Response body: {response_json}")
         except:
-            logger.debug(f"Response text: {response.text}")
+            #logger.debug(f"Response text: {response.text}")
             response_json = None
         
         response.raise_for_status()
