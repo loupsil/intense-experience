@@ -276,6 +276,16 @@ def check_bulk_availability_journee(make_mews_request_func, data):
         for date_str in chunk_dates:
             date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
 
+            # Pre-compute time slots with datetime objects for both min_hours values
+            # This avoids re-parsing time strings for each suite
+            precomputed_slots = {}
+            for min_h in [DAY_MIN_HOURS, SPECIAL_MIN_HOURS]:
+                precomputed_slots[min_h] = []
+                for arrival_time, departure_time, duration in get_valid_slots(min_h):
+                    slot_start = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()))
+                    slot_end = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()))
+                    precomputed_slots[min_h].append((slot_start, slot_end, arrival_time, departure_time, duration))
+
             # For each suite, check which time slots are available
             suite_availability = {}
 
@@ -296,10 +306,7 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                 # Generate all possible time slot combinations
                 available_slots = []
 
-                for arrival_time, departure_time, duration in get_valid_slots(min_hours):
-                    # Create datetime objects for this slot (timezone-aware to match reservations)
-                    slot_start = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()))
-                    slot_end = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()))
+                for slot_start, slot_end, arrival_time, departure_time, duration in precomputed_slots[min_hours]:
 
                     # Check if this slot conflicts with any reservation
                     # For suites in SUITE_ID_MAPPING, check BOTH day and night suites (AND rule)
