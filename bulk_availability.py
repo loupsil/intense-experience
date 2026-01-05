@@ -1,6 +1,6 @@
 import logging
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import pytz
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -29,6 +29,60 @@ from config import (
 logger = logging.getLogger(__name__)
 # Reuse timezone object in hot paths
 BELGIAN_TZ = pytz.timezone(TIMEZONE)
+
+# Global cache for precomputed time slots per date - avoids repeated datetime creation
+GLOBAL_SLOTS = {}
+
+# Pre-generate valid slots per minimum-hour rule (module-level cache)
+_VALID_SLOTS_BY_MIN_HOURS = {}
+
+def _get_valid_slots(min_hours):
+    """Get valid arrival/departure slot combinations for given minimum hours."""
+    if min_hours in _VALID_SLOTS_BY_MIN_HOURS:
+        return _VALID_SLOTS_BY_MIN_HOURS[min_hours]
+
+    slots = []
+    for arrival_time in ARRIVAL_TIMES:
+        arr_hour = int(arrival_time.split(':')[0])
+        for departure_time in DEPARTURE_TIMES:
+            dep_hour = int(departure_time.split(':')[0])
+            duration = dep_hour - arr_hour
+            if duration < min_hours or duration > DAY_MAX_HOURS:
+                continue
+            slots.append((arrival_time, departure_time, duration))
+
+    _VALID_SLOTS_BY_MIN_HOURS[min_hours] = slots
+    return slots
+
+
+def get_precomputed_slots(date_obj):
+    """
+    Get precomputed time slots for a given date from global cache.
+    Creates and caches slots if not already present.
+    
+    Args:
+        date_obj: date object for the day to compute slots for
+        
+    Returns:
+        dict: {min_hours: [(slot_start, slot_end, arrival_str, departure_str, duration), ...]}
+    """
+    if date_obj in GLOBAL_SLOTS:
+        return GLOBAL_SLOTS[date_obj]
+
+    result = {}
+    for min_h in (DAY_MIN_HOURS, SPECIAL_MIN_HOURS):
+        result[min_h] = [
+            (
+                BELGIAN_TZ.localize(datetime.combine(date_obj, time.fromisoformat(arr))),
+                BELGIAN_TZ.localize(datetime.combine(date_obj, time.fromisoformat(dep))),
+                arr,
+                dep,
+                dur
+            )
+            for arr, dep, dur in _get_valid_slots(min_h)
+        ]
+    GLOBAL_SLOTS[date_obj] = result
+    return result
 
 
 def get_resource_ids_for_suites(suite_ids):
@@ -213,26 +267,6 @@ def check_bulk_availability_journee(make_mews_request_func, data):
     MAX_HOURS_PER_CHUNK = 96
     MAX_CONCURRENT_REQUESTS = 20
 
-    # Pre-generate valid slots per minimum-hour rule to skip repeated duration checks
-    valid_slots_by_min_hours = {}
-
-    def get_valid_slots(min_hours):
-        if min_hours in valid_slots_by_min_hours:
-            return valid_slots_by_min_hours[min_hours]
-
-        slots = []
-        for arrival_time in ARRIVAL_TIMES:
-            arr_hour = int(arrival_time.split(':')[0])
-            for departure_time in DEPARTURE_TIMES:
-                dep_hour = int(departure_time.split(':')[0])
-                duration = dep_hour - arr_hour
-                if duration < min_hours or duration > DAY_MAX_HOURS:
-                    continue
-                slots.append((arrival_time, departure_time, duration))
-
-        valid_slots_by_min_hours[min_hours] = slots
-        return slots
-
     def process_chunk(chunk_index, chunk_dates):
         """Process a single chunk of dates for day bookings"""
         chunk_start = datetime.fromisoformat(chunk_dates[0].replace('Z', '+00:00'))
@@ -285,15 +319,8 @@ def check_bulk_availability_journee(make_mews_request_func, data):
         for date_str in chunk_dates:
             date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
 
-            # Pre-compute time slots with datetime objects for both min_hours values
-            # This avoids re-parsing time strings for each suite
-            precomputed_slots = {}
-            for min_h in [DAY_MIN_HOURS, SPECIAL_MIN_HOURS]:
-                precomputed_slots[min_h] = []
-                for arrival_time, departure_time, duration in get_valid_slots(min_h):
-                    slot_start = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()))
-                    slot_end = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()))
-                    precomputed_slots[min_h].append((slot_start, slot_end, arrival_time, departure_time, duration))
+            # Get precomputed time slots from global cache (huge speedup - datetime creation removed from inner loops)
+            precomputed_slots = get_precomputed_slots(date_obj)
 
             # Pre-filter reservations by date: only keep reservations that could affect this date
             # A reservation affects this date if its buffered time overlaps with the day's time range
