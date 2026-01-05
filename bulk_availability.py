@@ -286,6 +286,27 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                     slot_end = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()))
                     precomputed_slots[min_h].append((slot_start, slot_end, arrival_time, departure_time, duration))
 
+            # Pre-filter reservations by date: only keep reservations that could affect this date
+            # A reservation affects this date if its buffered time overlaps with the day's time range
+            day_start = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.min.time()))
+            day_end = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.max.time()))
+            
+            reservations_by_suite_for_date = {}
+            for suite_id, suite_reservations in reservations_by_suite.items():
+                filtered_reservations = []
+                for res in suite_reservations:
+                    # Pre-compute buffered times
+                    res_start_buffered = res["start"] - timedelta(hours=CLEANING_BUFFER_HOURS)
+                    res_end_buffered = res["end"] + timedelta(hours=CLEANING_BUFFER_HOURS)
+                    # Check if buffered reservation overlaps with this date
+                    if res_end_buffered > day_start and res_start_buffered < day_end:
+                        filtered_reservations.append({
+                            "start_buffered": res_start_buffered,
+                            "end_buffered": res_end_buffered,
+                        })
+                if filtered_reservations:
+                    reservations_by_suite_for_date[suite_id] = filtered_reservations
+
             # For each suite, check which time slots are available
             suite_availability = {}
 
@@ -303,36 +324,26 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                     # Regular suite: use 3-hour minimum
                     min_hours = DAY_MIN_HOURS
                 
+                # Check if this suite has a corresponding mapped suite ID (compute once per suite)
+                suite_ids_to_check = [suite_id]
+                mapped_suite_id = SUITE_ID_MAPPING.get(suite_id)
+                if mapped_suite_id:
+                    suite_ids_to_check.append(mapped_suite_id)
+
+                # Collect relevant reservations for the suite(s) involved (pre-filtered by date)
+                suite_reservations_for_date = []
+                for sid in suite_ids_to_check:
+                    suite_reservations_for_date.extend(reservations_by_suite_for_date.get(sid, []))
+
                 # Generate all possible time slot combinations
                 available_slots = []
 
                 for slot_start, slot_end, arrival_time, departure_time, duration in precomputed_slots[min_hours]:
 
-                    # Check if this slot conflicts with any reservation
-                    # For suites in SUITE_ID_MAPPING, check BOTH day and night suites (AND rule)
-                    suite_ids_to_check = [suite_id]
-
-                    # Check if this suite has a corresponding mapped suite ID
-                    mapped_suite_id = SUITE_ID_MAPPING.get(suite_id)
-                    if mapped_suite_id:
-                        suite_ids_to_check.append(mapped_suite_id)
-
-                    # Collect relevant reservations for the suite(s) involved
-                    suite_reservations = []
-                    for sid in suite_ids_to_check:
-                        suite_reservations.extend(reservations_by_suite.get(sid, []))
-
                     is_available = True
-                    for reservation in suite_reservations:
-                        res_start = reservation["start"]
-                        res_end = reservation["end"]
-
-                        # Apply buffer to existing reservations (1 hour before and 1 hour after)
-                        res_start_buffered = res_start - timedelta(hours=CLEANING_BUFFER_HOURS)
-                        res_end_buffered = res_end + timedelta(hours=CLEANING_BUFFER_HOURS)
-
+                    for reservation in suite_reservations_for_date:
                         # Check for overlap (new slot WITHOUT buffer vs existing reservation WITH buffer)
-                        if not (slot_end <= res_start_buffered or slot_start >= res_end_buffered):
+                        if not (slot_end <= reservation["start_buffered"] or slot_start >= reservation["end_buffered"]):
                             is_available = False
                             break
 
