@@ -11,6 +11,7 @@ import pytz
 import unicodedata
 from bulk_availability import (
     check_bulk_availability_journee, 
+    check_bulk_availability_journee_async,
     check_bulk_availability_nuitee,
     get_resource_ids_for_suites,
     get_resource_blocks,
@@ -178,9 +179,16 @@ def get_suite_id_mapping():
 
 @intense_experience_bp.route('/intense_experience-api/bulk-availability-journee', methods=['POST'])
 def bulk_availability_journee_route():
-    """Check availability for day bookings (journée) - shows date as unavailable if no valid time slots remain"""
+    """Check availability for day bookings (journée) - uses async parallelization (no threads/workers)"""
     data = request.json
-    result = check_bulk_availability_journee(make_mews_request, data)
+    # Use async version for parallel API calls without threads
+    result = check_bulk_availability_journee_async(
+        data=data,
+        base_url=MEWS_API_BASE_URL,
+        client_token=CLIENT_TOKEN,
+        access_token=ACCESS_TOKEN,
+        make_mews_request_func=make_mews_request
+    )
     if isinstance(result, tuple):
         # Error case: (error_dict, status_code)
         return jsonify(result[0]), result[1]

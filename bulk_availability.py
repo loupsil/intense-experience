@@ -3,6 +3,9 @@ import unicodedata
 from datetime import datetime, timedelta
 import pytz
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import asyncio
+import aiohttp
+import os
 
 # Import all configuration from shared config file
 from config import (
@@ -395,6 +398,302 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                 logger.error(f"Chunk {chunk_index + 1} generated an exception: {exc}")
 
     logger.info(f"Bulk availability check (journée) completed - processed {len(availability_results)} dates")
+
+    return {
+        "availability": availability_results,
+        "status": "success"
+    }
+
+
+# ========== ASYNC VERSION FOR JOURNÉE (no threads/workers, uses asyncio) ==========
+
+async def _make_async_mews_request(session, endpoint, payload, base_url, client_token, access_token):
+    """Make an async request to Mews API using aiohttp"""
+    url = f"{base_url}/{endpoint}"
+    payload.update({
+        "ClientToken": client_token,
+        "AccessToken": access_token
+    })
+    
+    try:
+        async with session.post(url, json=payload) as response:
+            if response.status >= 400:
+                logger.error(f"Mews API error: {response.status}")
+                return None
+            return await response.json()
+    except Exception as e:
+        logger.error(f"Async Mews API request failed: {e}")
+        return None
+
+
+async def _fetch_chunk_reservations_async(session, chunk_index, chunk_dates, base_url, client_token, access_token, booking_type='day'):
+    """Fetch reservations for a single chunk asynchronously"""
+    MAX_HOURS_PER_CHUNK = 96
+    
+    chunk_start = datetime.fromisoformat(chunk_dates[0].replace('Z', '+00:00'))
+    chunk_end = datetime.fromisoformat(chunk_dates[-1].replace('Z', '+00:00'))
+    chunk_end = chunk_end + timedelta(days=1)
+
+    chunk_hours = (chunk_end - chunk_start).total_seconds() / 3600
+    if chunk_hours > MAX_HOURS_PER_CHUNK:
+        chunk_end = chunk_start + timedelta(hours=MAX_HOURS_PER_CHUNK)
+
+    # For day bookings: add buffer after
+    buffered_start = chunk_start.isoformat()
+    buffered_end = (chunk_end + timedelta(hours=CLEANING_BUFFER_HOURS)).isoformat()
+
+    payload = {
+        "Client": "Intense Experience Booking",
+        "StartUtc": buffered_start,
+        "EndUtc": buffered_end,
+        "ServiceIds": [DAY_SERVICE_ID, NIGHT_SERVICE_ID]
+    }
+
+    result = await _make_async_mews_request(session, "reservations/getAll", payload, base_url, client_token, access_token)
+    return chunk_index, chunk_dates, result
+
+
+def check_bulk_availability_journee_async(data, base_url, client_token, access_token, make_mews_request_func):
+    """
+    Async version of check_bulk_availability_journee.
+    Uses asyncio + aiohttp for concurrent API calls WITHOUT threads/workers.
+    
+    Args:
+        data: Request data with service_id, dates, suite_id
+        base_url: Mews API base URL
+        client_token: Mews client token
+        access_token: Mews access token
+        make_mews_request_func: Sync function for non-parallelized calls (suites, resource blocks)
+    
+    Returns:
+        Same format as check_bulk_availability_journee
+    """
+    service_id = data.get('service_id')
+    dates = data.get('dates')
+    selected_suite_id = data.get('suite_id')
+
+    if not all([service_id, dates]) or len(dates) == 0:
+        logger.error("Missing required parameters")
+        return {"error": "Missing required parameters", "status": "error"}, 400
+
+    # Get all suite categories (sync call - only done once)
+    payload = {
+        "EnterpriseIds": [ENTERPRISE_ID],
+        "ServiceIds": [DAY_SERVICE_ID, NIGHT_SERVICE_ID],
+        "IncludeDefault": False,
+        "Limitation": {"Count": 100}
+    }
+
+    suites_result = make_mews_request_func("resourceCategories/getAll", payload)
+    if not suites_result or "ResourceCategories" not in suites_result:
+        logger.error("Failed to fetch suites")
+        return {"error": "Failed to fetch suites", "status": "error"}, 500
+
+    def is_excluded_category(cat):
+        raw_name = cat.get("Name") or cat.get("Names") or ""
+        if isinstance(raw_name, dict):
+            raw_name = raw_name.get("fr-FR") or raw_name.get("en-US") or next(iter(raw_name.values()), "")
+        name_ascii = unicodedata.normalize("NFKD", str(raw_name)).encode("ascii", "ignore").decode("ascii").lower()
+        return name_ascii in {"etage", "batiment"}
+
+    def is_included_category(cat):
+        cat_type = cat.get("Type")
+        classification = cat.get("Classification")
+        if cat_type in ["Suite", "Room", "Other"]:
+            return True
+        if cat_type == "PrivateSpaces" and classification == "Other":
+            return True
+        return False
+
+    all_suites = [cat for cat in suites_result["ResourceCategories"]
+                  if cat.get("IsActive")
+                  and is_included_category(cat)
+                  and not is_excluded_category(cat)]
+
+    suite_ids = [suite["Id"] for suite in all_suites]
+    resource_ids_cache = {
+        suite_id: get_resource_ids_for_suites([suite_id])
+        for suite_id in suite_ids
+    }
+
+    logger.info(f"[ASYNC] Found {len(suite_ids)} active suites (selected_suite_id: {selected_suite_id})")
+
+    sorted_dates = sorted(set(dates))
+    availability_results = {}
+
+    # Fetch resource blocks (sync call - only done once)
+    if sorted_dates:
+        range_start = datetime.fromisoformat(sorted_dates[0].replace('Z', '+00:00'))
+        range_end = datetime.fromisoformat(sorted_dates[-1].replace('Z', '+00:00')) + timedelta(days=1)
+        blocks_start = (range_start - timedelta(days=2)).isoformat()
+        blocks_end = (range_end + timedelta(days=2)).isoformat()
+        resource_blocks = get_resource_blocks(make_mews_request_func, blocks_start, blocks_end)
+    else:
+        resource_blocks = []
+
+    CHUNK_SIZE_DAYS = 4
+    valid_slots_by_min_hours = {}
+
+    def get_valid_slots(min_hours):
+        if min_hours in valid_slots_by_min_hours:
+            return valid_slots_by_min_hours[min_hours]
+
+        slots = []
+        for arrival_time in ARRIVAL_TIMES:
+            arr_hour = int(arrival_time.split(':')[0])
+            for departure_time in DEPARTURE_TIMES:
+                dep_hour = int(departure_time.split(':')[0])
+                duration = dep_hour - arr_hour
+                if duration < min_hours or duration > DAY_MAX_HOURS:
+                    continue
+                slots.append((arrival_time, departure_time, duration))
+
+        valid_slots_by_min_hours[min_hours] = slots
+        return slots
+
+    def process_chunk_data(chunk_dates, result):
+        """Process reservation data for a chunk (CPU-bound, runs sync)"""
+        if result is None:
+            logger.error(f"Failed to get reservations for chunk")
+            return {}
+
+        chunk_availability = {}
+        reservations = result.get("Reservations", [])
+        logger.info(f"[ASYNC] Processing {len(reservations)} reservations")
+
+        reservations_by_suite = {}
+        for reservation in reservations:
+            suite_id = reservation.get('RequestedCategoryId')
+            if not suite_id:
+                continue
+            start_raw = reservation.get('StartUtc', '')
+            end_raw = reservation.get('EndUtc', '')
+            if not start_raw or not end_raw:
+                continue
+            res_start_utc = datetime.fromisoformat(start_raw.replace('Z', '+00:00'))
+            res_end_utc = datetime.fromisoformat(end_raw.replace('Z', '+00:00'))
+            reservations_by_suite.setdefault(suite_id, []).append({
+                "start": res_start_utc.astimezone(BELGIAN_TZ),
+                "end": res_end_utc.astimezone(BELGIAN_TZ),
+            })
+
+        for date_str in chunk_dates:
+            date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
+            suite_availability = {}
+
+            for suite_id in suite_ids:
+                if selected_suite_id is None:
+                    min_hours = DAY_MIN_HOURS
+                elif suite_id in SPECIAL_MIN_DURATION_SUITES:
+                    min_hours = SPECIAL_MIN_HOURS
+                else:
+                    min_hours = DAY_MIN_HOURS
+
+                available_slots = []
+
+                for arrival_time, departure_time, duration in get_valid_slots(min_hours):
+                    slot_start = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.strptime(arrival_time, '%H:%M').time()))
+                    slot_end = BELGIAN_TZ.localize(datetime.combine(date_obj, datetime.strptime(departure_time, '%H:%M').time()))
+
+                    suite_ids_to_check = [suite_id]
+                    mapped_suite_id = SUITE_ID_MAPPING.get(suite_id)
+                    if mapped_suite_id:
+                        suite_ids_to_check.append(mapped_suite_id)
+
+                    suite_reservations = []
+                    for sid in suite_ids_to_check:
+                        suite_reservations.extend(reservations_by_suite.get(sid, []))
+
+                    is_available = True
+                    for reservation in suite_reservations:
+                        res_start = reservation["start"]
+                        res_end = reservation["end"]
+                        res_start_buffered = res_start - timedelta(hours=CLEANING_BUFFER_HOURS)
+                        res_end_buffered = res_end + timedelta(hours=CLEANING_BUFFER_HOURS)
+
+                        if not (slot_end <= res_start_buffered or slot_start >= res_end_buffered):
+                            is_available = False
+                            break
+
+                    if is_available:
+                        resource_ids_to_check = []
+                        for sid in suite_ids_to_check:
+                            resource_ids_to_check.extend(resource_ids_cache.get(sid, []))
+
+                        if check_resource_block_conflict(slot_start, slot_end, resource_ids_to_check, resource_blocks):
+                            is_available = False
+
+                    if is_available:
+                        available_slots.append({
+                            'arrival': arrival_time,
+                            'departure': departure_time,
+                            'duration': duration
+                        })
+
+                suite_availability[suite_id] = available_slots
+
+            for suite_id in suite_ids:
+                mapped_suite_id = SUITE_ID_MAPPING.get(suite_id) or SUITE_ID_MAPPING_REVERSE.get(suite_id)
+                if mapped_suite_id and mapped_suite_id in suite_availability:
+                    if len(suite_availability[suite_id]) == 0 or len(suite_availability[mapped_suite_id]) == 0:
+                        suite_availability[suite_id] = []
+                        suite_availability[mapped_suite_id] = []
+
+            has_available_slot = any(len(slots) > 0 for slots in suite_availability.values())
+            total_available_slots = sum(len(slots) for slots in suite_availability.values())
+
+            chunk_availability[date_str] = {
+                "available": has_available_slot,
+                "total_suites": len(suite_ids),
+                "suite_availability": suite_availability,
+                "total_available_slots": total_available_slots
+            }
+
+        return chunk_availability
+
+    async def fetch_all_chunks():
+        """Fetch all chunks concurrently using asyncio"""
+        chunks = []
+        for i in range(0, len(sorted_dates), CHUNK_SIZE_DAYS):
+            chunk_dates = sorted_dates[i:i + CHUNK_SIZE_DAYS]
+            if chunk_dates:
+                chunks.append((i // CHUNK_SIZE_DAYS, chunk_dates))
+
+        connector = aiohttp.TCPConnector(limit=20)  # Connection pool limit
+        async with aiohttp.ClientSession(connector=connector) as session:
+            tasks = [
+                _fetch_chunk_reservations_async(
+                    session, chunk_index, chunk_dates,
+                    base_url, client_token, access_token
+                )
+                for chunk_index, chunk_dates in chunks
+            ]
+            
+            # Run all API calls concurrently
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            return results
+
+    # Run the async event loop
+    # Create a new event loop for this thread (Flask worker threads don't have one)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        chunk_results = loop.run_until_complete(fetch_all_chunks())
+    finally:
+        loop.close()
+
+    # Process results (sync, CPU-bound)
+    for result in chunk_results:
+        if isinstance(result, Exception):
+            logger.error(f"Chunk fetch failed with exception: {result}")
+            continue
+        
+        chunk_index, chunk_dates, reservation_data = result
+        chunk_availability = process_chunk_data(chunk_dates, reservation_data)
+        availability_results.update(chunk_availability)
+
+    logger.info(f"[ASYNC] Bulk availability check (journée) completed - processed {len(availability_results)} dates")
 
     return {
         "availability": availability_results,
