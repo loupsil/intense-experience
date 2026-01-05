@@ -464,7 +464,6 @@ export default {
           available: false,
           available_morning: false,
           available_night: false,
-          total_suites: 0,
           booked_suites: 0,
           available_suites: 0,
           booked_suite_ids: [],
@@ -544,7 +543,8 @@ export default {
 
     // The function is used to get the availability of the date
     // source can be null (looking at all suites) or this.selectedSuiteAvailability
-    //Example output : { available: true, available_morning: true, available_night: true, total_suites: 1, booked_suites: 0, available_suites: 1, booked_suite_ids: [] }
+    // Example output for journee: { available: true, suite_availability: {...} }
+    // Example output for nuitee: { available: true, available_morning: true, available_night: true, booked_suites: 0, available_suites: 1, booked_suite_ids: [] }
     getDateAvailability(date, source = null) {
       if (!date) return null
       // Normalize to UTC midnight to match availability keys

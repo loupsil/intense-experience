@@ -126,7 +126,7 @@ def check_bulk_availability_journee(make_mews_request_func, data):
     """Check availability for day bookings (journée) - considers reservations from both day and night services - shows date as unavailable if no valid time slots remain"""
     service_id = data.get('service_id')
     dates = data.get('dates')  # List of ISO date strings
-    selected_suite_id = data.get('suite_id')  # Optional: used to determine minimum duration (not for filtering)
+    selected_suite_id = data.get('suite_id')  # Optional: used to determine minimum duration and for early-exit optimization
 
     if not all([service_id, dates]) or len(dates) == 0:
         logger.error("Missing required parameters")
@@ -170,11 +170,20 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                   and is_included_category(cat)
                   and not is_excluded_category(cat)]
 
-    # NOTE: We don't filter by suite_id here because we need to check ALL suites
-    # to compute partial availability (golden cells). The selected_suite_id is only
-    # used to determine the minimum duration for that specific suite.
-
     suite_ids = [suite["Id"] for suite in all_suites]
+    
+    # Optimization: reorder suite_ids to check selected suite first when specified
+    # Also get the night mapping for the selected suite if it exists
+    selected_night_suite_id = SUITE_ID_MAPPING.get(selected_suite_id) if selected_suite_id else None
+    
+    if selected_suite_id and selected_suite_id in suite_ids:
+        # Move selected suite to front, followed by its night mapping if exists
+        suite_ids = [sid for sid in suite_ids if sid != selected_suite_id and sid != selected_night_suite_id]
+        if selected_night_suite_id and selected_night_suite_id in [s["Id"] for s in all_suites]:
+            suite_ids = [selected_suite_id, selected_night_suite_id] + suite_ids
+        else:
+            suite_ids = [selected_suite_id] + suite_ids
+    
     # Cache resource IDs per suite to avoid recomputing in the hot loop
     resource_ids_cache = {
         suite_id: get_resource_ids_for_suites([suite_id])
@@ -309,8 +318,19 @@ def check_bulk_availability_journee(make_mews_request_func, data):
 
             # For each suite, check which time slots are available
             suite_availability = {}
+            has_available_slot = False
+            selected_suite_available = False
 
             for suite_id in suite_ids:
+                # Optimization: Early exit logic
+                # - If suite_id is selected and is available (along with its night mapping), skip remaining suites
+                # - Note: When no suite is selected (aggregated request), we CANNOT exit early because
+                #   the frontend uses suite_availability to check ANY suite the user might have selected
+                
+                if selected_suite_id and selected_suite_available:
+                    # Selected suite is available - skip remaining suites (no golden cells needed)
+                    break
+                
                 # Determine minimum hours based on the suite being checked:
                 # - Each suite uses its inherent minimum (2h for special Chambres, 3h for others)
                 # - UNLESS no suite is selected (golden cell scenario), then force 3h minimum for ALL
@@ -365,9 +385,28 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                         })
 
                 suite_availability[suite_id] = available_slots
+                
+                # Track if we found any available slot
+                if len(available_slots) > 0:
+                    has_available_slot = True
+                    
+                    # Check if selected suite (and its night mapping) is now confirmed available
+                    if selected_suite_id and suite_id == selected_suite_id:
+                        # Check if night mapping also needs to be verified
+                        if selected_night_suite_id and selected_night_suite_id in suite_ids:
+                            # Need to also check night suite - will be done in next iteration
+                            # (since we reordered suite_ids to have night suite right after selected)
+                            pass
+                        else:
+                            # No night mapping needed, selected suite is available
+                            selected_suite_available = True
+                    elif selected_suite_id and suite_id == selected_night_suite_id:
+                        # Just checked night suite - verify if selected suite was also available
+                        if selected_suite_id in suite_availability and len(suite_availability[selected_suite_id]) > 0:
+                            selected_suite_available = True
 
             # Apply AND logic for mapped suites: if either suite in a pair has 0 availability, both must have 0
-            for suite_id in suite_ids:
+            for suite_id in list(suite_availability.keys()):
                 # Check if this suite has a mapped counterpart
                 mapped_suite_id = SUITE_ID_MAPPING.get(suite_id) or SUITE_ID_MAPPING_REVERSE.get(suite_id)
                 
@@ -377,15 +416,12 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                         suite_availability[suite_id] = []
                         suite_availability[mapped_suite_id] = []
 
-            # Date is available if at least one suite has at least one available slot
+            # Recompute has_available_slot after AND logic application
             has_available_slot = any(len(slots) > 0 for slots in suite_availability.values())
-            total_available_slots = sum(len(slots) for slots in suite_availability.values())
 
             chunk_availability[date_str] = {
                 "available": has_available_slot,
-                "total_suites": len(suite_ids),
-                "suite_availability": suite_availability,
-                "total_available_slots": total_available_slots
+                "suite_availability": suite_availability
             }
 
         return chunk_availability
@@ -638,7 +674,6 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
                     "available": available_night,
                     "available_morning": available_morning,
                     "available_night": available_night,
-                    "total_suites": len(suite_ids),
                     "booked_suites": len(booked_suites),
                     "available_suites": len(night_available_suite_ids),
                     "booked_suite_ids": list(booked_suites)
