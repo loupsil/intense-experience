@@ -113,6 +113,9 @@ export default {
     // Load products if we have a serviceId but no products loaded
     if (this.serviceId && this.products.length === 0) {
       this.loadProducts()
+    } else if (this.products.length > 0) {
+      // Products already loaded (e.g., returning to this step) - reload images
+      await this.loadProductImages(this.products)
     }
     
     // Check time options availability for nuitée bookings

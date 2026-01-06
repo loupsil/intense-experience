@@ -1198,6 +1198,16 @@ export default {
           return
         }
         
+        // When going back from Options (step 5) to Suite Selection (step 4), reset suite selection
+        // This requires the user to re-select a suite before proceeding
+        if (this.currentStep === 5) {
+          this.selectedSuite = null
+          this.suiteClearedForGoldenCell = false
+          this.suitePricing = {}
+          this.suitePriceCalculation = ''
+          this.pricing.total = 0
+        }
+        
         // When going back from Suite Selection (step 4), reset suite selection
         if (this.currentStep === 4) {
           // Reset to preselected suite from URL if available, otherwise clear selection
