@@ -30,10 +30,10 @@
                     class="calendar-cell"
                     :class="{
                       'selected': isDateSelected(date),
-                      'available': isDateAvailable(date) && !isDatePartiallyAvailable(date),
-                      'partially-available': isDatePartiallyAvailable(date),
-                      'unavailable': !isDateAvailable(date) && !isDatePartiallyAvailable(date),
-                      'past': isDateInPast(date),
+                      'available': isDateAvailable(date) && !isDatePartiallyAvailable(date) && !isDateUnavailableForJournee(date),
+                      'partially-available': isDatePartiallyAvailable(date) && !isDateUnavailableForJournee(date),
+                      'unavailable': (!isDateAvailable(date) && !isDatePartiallyAvailable(date)) || isDateUnavailableForJournee(date),
+                      'past': isDateUnavailableForJournee(date),
                       'other-month': !isDateInCurrentMonth(date, currentMonth)
                     }"
                     @click="!availabilityLoading && selectDate(date)"
@@ -65,10 +65,10 @@
                     class="calendar-cell"
                     :class="{
                       'selected': isDateSelected(date),
-                      'available': isDateAvailable(date) && !isDatePartiallyAvailable(date),
-                      'partially-available': isDatePartiallyAvailable(date),
-                      'unavailable': !isDateAvailable(date) && !isDatePartiallyAvailable(date),
-                      'past': isDateInPast(date),
+                      'available': isDateAvailable(date) && !isDatePartiallyAvailable(date) && !isDateUnavailableForJournee(date),
+                      'partially-available': isDatePartiallyAvailable(date) && !isDateUnavailableForJournee(date),
+                      'unavailable': (!isDateAvailable(date) && !isDatePartiallyAvailable(date)) || isDateUnavailableForJournee(date),
+                      'past': isDateUnavailableForJournee(date),
                       'other-month': !isDateInCurrentMonth(date, nextMonthDate)
                     }"
                     @click="!availabilityLoading && selectDate(date)"
@@ -175,6 +175,8 @@
           :selected-suite="suiteForBooking"
           :suite-pricing="suitePricing"
           :price-display-calculator="priceDisplayCalculator"
+          :debug-enabled="debugEnabled"
+          :debug-now="debugNow"
           @time-selected="handleTimeSelection"
           @book-suite="confirmSelection"
         />
@@ -256,10 +258,15 @@ export default {
       bookingLimitsLoaded: false,
       suiteIdMapping: {}, // Maps day service suite IDs to night service suite IDs
       suiteIdMappingReverse: {}, // Maps night service suite IDs to day service suite IDs
-      isMobileView: window.innerWidth <= 768,
-      hasMounted: false // Flag to prevent duplicate fetch on initial prop set
-    }
-  },
+        isMobileView: window.innerWidth <= 768,
+        hasMounted: false, // Flag to prevent duplicate fetch on initial prop set
+        // DEBUG MODE: Set debugNow to a Date object to simulate a specific time
+        // Set to null to use real time. Toggle debugEnabled to turn on/off.
+        // Example: new Date('2026-01-02T14:00:00') simulates 02/01/2026 at 14:00
+        debugEnabled: false,
+        debugNow: new Date('2026-01-07T14:00:01')
+      }
+    },
   computed: {
     selectionComplete() {
       if (this.selectedBookingType === 'day') {
@@ -787,6 +794,11 @@ export default {
       if (this.isDateInPast(date)) {
         return
       }
+      
+      // Prevent selection of unavailable dates for journée (today, or tomorrow if no valid slots)
+      if (this.isDateUnavailableForJournee(date)) {
+        return
+      }
 
       if (this.selectedBookingType === 'day') {
         // For day bookings, select a single day but preserve previously selected times
@@ -1025,8 +1037,13 @@ export default {
       return this.selectedDates.end && date.toDateString() === this.selectedDates.end.toDateString()
     },
 
+    // Helper method to get current time (uses debugNow if debugEnabled, otherwise real time)
+    getCurrentTime() {
+      return (this.debugEnabled && this.debugNow) ? new Date(this.debugNow) : new Date()
+    },
+
     isDateInPast(date) {
-      const today = new Date()
+      const today = this.getCurrentTime()
       today.setHours(0, 0, 0, 0)
       const compareDate = new Date(date)
       compareDate.setHours(0, 0, 0, 0)
@@ -1038,8 +1055,8 @@ export default {
       // First check if date is in the past
       if (this.isDateInPast(date)) return true
       
-      const now = new Date()
-      const today = new Date()
+      const now = this.getCurrentTime()
+      const today = this.getCurrentTime()
       today.setHours(0, 0, 0, 0)
       
       const compareDate = new Date(date)
@@ -1057,6 +1074,89 @@ export default {
       }
       
       return false
+    },
+
+    // For journée bookings: today is unavailable, tomorrow is unavailable if no slots >= 24h from now
+    isDateUnavailableForJournee(date) {
+      // First check if date is in the past
+      if (this.isDateInPast(date)) return true
+      
+      const now = this.getCurrentTime()
+      const today = this.getCurrentTime()
+      today.setHours(0, 0, 0, 0)
+      
+      const compareDate = new Date(date)
+      compareDate.setHours(0, 0, 0, 0)
+      
+      // Current day is always unavailable for journée
+      if (compareDate.getTime() === today.getTime()) return true
+      
+      // Check tomorrow - only available if there are slots >= 24h from now
+      const tomorrow = new Date(today)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      
+      if (compareDate.getTime() === tomorrow.getTime()) {
+        return !this.hasValidJourneeSlotsForDate(date)
+      }
+      
+      return false
+    },
+
+    // Check if a date has any valid journée slots (arrival time > 24h from now)
+    hasValidJourneeSlotsForDate(date) {
+      const now = this.getCurrentTime()
+      const compareDate = new Date(date)
+      compareDate.setHours(0, 0, 0, 0)
+      
+      // Calculate the minimum valid arrival time (24h from now)
+      const minValidTime = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+      
+      // Get availability data for this date
+      const availability = this.getDateAvailability(date)
+      if (!availability) {
+        // No availability data yet, assume there could be valid slots
+        return true
+      }
+      
+      // Check suite_availability for available time slots
+      const suiteAvailability = availability.suite_availability
+      if (!suiteAvailability) {
+        // Use general available flag if no detailed suite availability
+        return availability.available
+      }
+      
+      // Check if any suite has any slot that's >= minValidTime
+      for (const suiteId in suiteAvailability) {
+        const slots = suiteAvailability[suiteId]
+        if (!Array.isArray(slots)) continue
+        
+        for (const slot of slots) {
+          // Parse slot time - slot can be object with 'arrival' property or string "HH:MM"
+          let arrivalTime
+          if (typeof slot === 'object' && slot.arrival) {
+            arrivalTime = slot.arrival
+          } else if (typeof slot === 'string') {
+            arrivalTime = slot
+          } else {
+            continue
+          }
+          
+          const parts = arrivalTime.split(':')
+          if (parts.length < 2) continue
+          
+          const hours = parseInt(parts[0], 10)
+          const minutes = parseInt(parts[1], 10)
+          
+          const slotDateTime = new Date(compareDate)
+          slotDateTime.setHours(hours, minutes, 0, 0)
+          
+          if (slotDateTime >= minValidTime) {
+            return true // Found a valid slot
+          }
+        }
+      }
+      
+      return false // No valid slots found
     },
 
     formatMonthYear(date) {

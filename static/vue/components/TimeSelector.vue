@@ -120,6 +120,14 @@ export default {
     priceDisplayCalculator: {
       type: Function,
       default: null
+    },
+    debugEnabled: {
+      type: Boolean,
+      default: false
+    },
+    debugNow: {
+      type: Date,
+      default: null
     }
   },
   data() {
@@ -137,11 +145,11 @@ export default {
       limitsLoaded: false,
       pricingLoading: false,
       frontendConfig: {
-        day_service_id: null,
-        night_max_nights: 2
+          day_service_id: null,
+          night_max_nights: 2
+        }
       }
-    }
-  },
+    },
   computed: {
     effectiveMinHours() {
       // Use special minimum hours if the selected suite is in the special list
@@ -471,6 +479,11 @@ export default {
         return false
       }
 
+      // Check if this arrival time is at least 24h from now (for tomorrow's bookings)
+      if (this.selectedDate && this.isArrivalTimeLessThan24hFromNow(arrivalTime)) {
+        return true
+      }
+
       // If a specific suite is selected, only check that suite
       if (this.selectedSuite) {
         const suiteId = this.selectedSuite.Id
@@ -499,6 +512,33 @@ export default {
       }
 
       return true // No valid slots available with this arrival time
+    },
+
+    // Helper method to get current time (uses debugNow if debugEnabled, otherwise real time)
+    getCurrentTime() {
+      return (this.debugEnabled && this.debugNow) ? new Date(this.debugNow) : new Date()
+    },
+
+    // Check if an arrival time on the selected date is less than 24h from now
+    isArrivalTimeLessThan24hFromNow(arrivalTime) {
+      if (!this.selectedDate) return false
+      
+      const now = this.getCurrentTime()
+      const selectedDate = new Date(this.selectedDate)
+      selectedDate.setHours(0, 0, 0, 0)
+      
+      // Parse the arrival time
+      const [hours, minutes] = arrivalTime.split(':').map(Number)
+      
+      // Create the full arrival datetime
+      const arrivalDateTime = new Date(selectedDate)
+      arrivalDateTime.setHours(hours, minutes, 0, 0)
+      
+      // Calculate the minimum valid time (24h from now)
+      const minValidTime = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+      
+      // Return true if arrival time is less than 24h from now (should be disabled)
+      return arrivalDateTime < minValidTime
     },
 
     isDepartureTimeDisabled(departureTime) {
