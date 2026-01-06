@@ -37,44 +37,8 @@
         </div>
       </div>
 
-      <!-- Step 1: Service Selection -->
-      <div v-if="currentStep === 1" class="step">        
-        <!-- Loading state -->
-        <div v-if="loadingServices" class="service-loading">
-          <div class="spinner"></div>
-        </div>
-
-        <!-- Services loaded -->
-        <div v-else-if="services.length > 0" class="service-selection">
-          <div
-            v-for="service in services"
-            :key="service.Id"
-            class="service-card"
-            :class="{ selected: selectedService?.Id === service.Id }"
-            @click="selectService(service)"
-          >
-            <h3>{{ service.Names['fr-FR'] || service.Name }}</h3>
-            <p>{{ getServiceDescription(service.Id) }}</p>
-            <div class="service-icon">
-              <i :class="getServiceIcon(service.Id)"></i>
-            </div>
-          </div>
-        </div>
-
-        <!-- No services available -->
-        <div v-else class="service-empty">
-          <i class="fas fa-inbox"></i>
-        </div>
-
-        <button
-          v-if="services.length > 0"
-          class="next-btn"
-          :disabled="!selectedService"
-          @click="nextStep"
-        >
-          Next
-        </button>
-      </div>
+      <!-- Step 1: Service Selection (skipped - service is preselected via URL) -->
+      <div v-if="currentStep === 1" class="step"></div>
 
       <!-- Step 2: Calendar Selection -->
       <div v-if="currentStep === 2" class="step">
@@ -539,12 +503,15 @@ export default {
       const service = this.services.find(s => s.Id === this.preselectedServiceId)
       if (service) {
         this.selectService(service)
-        this.currentStep = 2 // Skip service selection
 
-        // Handle preselected suite if service was found
+        // Load suite BEFORE advancing to step 2 to avoid duplicate availability fetch
+        // If we set currentStep = 2 first, CalendarSelector mounts with selectedSuite = null
+        // and fetches availability. Then when suite is loaded, the watcher triggers a second fetch.
         if (this.preselectedSuiteId) {
           await this.loadSuitesForPreselection(service)
         }
+        
+        this.currentStep = 2 // Now advance to calendar step with suite already set
       }
     }
   },

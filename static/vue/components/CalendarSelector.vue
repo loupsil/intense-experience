@@ -256,7 +256,8 @@ export default {
       bookingLimitsLoaded: false,
       suiteIdMapping: {}, // Maps day service suite IDs to night service suite IDs
       suiteIdMappingReverse: {}, // Maps night service suite IDs to day service suite IDs
-      isMobileView: window.innerWidth <= 768
+      isMobileView: window.innerWidth <= 768,
+      hasMounted: false // Flag to prevent duplicate fetch on initial prop set
     }
   },
   computed: {
@@ -291,6 +292,9 @@ export default {
     },
     selectedSuite: {
       handler(newSuite, oldSuite) {
+        // Skip refetch during initial mount - mounted() already handles it
+        if (!this.hasMounted) return
+        
         // Clear current availability when suite selection changes
         // This ensures we fetch fresh availability data for the selected suite
         if (newSuite !== oldSuite) {
@@ -312,6 +316,8 @@ export default {
       this.fetchSuiteIdMapping(),
       this.fetchAvailabilityForDisplayedDates()
     ])
+    // Mark as mounted to enable watcher refetches
+    this.hasMounted = true
   },
   beforeUnmount() {
     window.removeEventListener('resize', this.handleResize)
@@ -365,59 +371,39 @@ export default {
         ? '/intense_experience-api/bulk-availability-nuitee'
         : '/intense_experience-api/bulk-availability-journee'
 
-      const baseRequestData = {
+      // Make ONE request: suite-specific if suite selected, otherwise aggregated
+      // The suite-specific request returns all data needed for both currentAvailability and selectedSuiteAvailability
+      const requestData = {
         service_id: this.service.Id,
         dates,
         booking_type: this.selectedBookingType,
-        suite_id: null // always null for generic access point
-         }
-
-      const aggregatedRequest = this.performBulkAvailabilityRequest(
-        endpoint,
-        baseRequestData,
-        dates,
-        { fallbackOnError: true }
-      )
-
-      const shouldFetchSuiteSpecific = this.selectedSuite
-      let suiteSpecificRequest = null
-
-      if (shouldFetchSuiteSpecific) {
-        const suiteRequestData = {
-          ...baseRequestData,
-          suite_id: this.selectedSuite.Id // Pass the selected suite ID to determine minimum duration for days and handle golden cell logic (also from the back end ) for night
-        }
-        // Clear suite-specific data while loading to avoid stale highlights
-        this.selectedSuiteAvailability = {}
-        suiteSpecificRequest = this.performBulkAvailabilityRequest(
-          endpoint,
-          suiteRequestData,
-          dates,
-          { fallbackOnError: false }
-        )
-      } else {
-        this.selectedSuiteAvailability = {}
+        suite_id: this.selectedSuite ? this.selectedSuite.Id : null
       }
 
       try {
-        const aggregatedAvailability = await aggregatedRequest
+        const availability = await this.performBulkAvailabilityRequest(
+          endpoint,
+          requestData,
+          dates,
+          { fallbackOnError: true }
+        )
+
         if (this.currentRequestId !== requestId) {
           return
         }
 
-        if (aggregatedAvailability) {
-          this.currentAvailability = aggregatedAvailability
-        }
-
-        if (suiteSpecificRequest) {
-          const suiteAvailability = await suiteSpecificRequest
-          if (this.currentRequestId !== requestId) {
-            return
+        if (availability) {
+          // Always update currentAvailability with the response
+          this.currentAvailability = availability
+          
+          // If suite is selected, also use this data for selectedSuiteAvailability
+          if (this.selectedSuite) {
+            this.selectedSuiteAvailability = availability
+          } else {
+            this.selectedSuiteAvailability = {}
           }
-          this.selectedSuiteAvailability = suiteAvailability || {}
         }
 
-        // Use nextTick to ensure DOM updates happen atomically once both requests resolve
         await this.$nextTick()
       } catch (error) {
         console.error('Failed to process availability:', error)
