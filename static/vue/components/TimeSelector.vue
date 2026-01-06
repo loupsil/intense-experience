@@ -324,6 +324,30 @@ export default {
         if (newVal && newVal.Id !== oldVal?.Id) {
           this.fetchBookingLimits()
         }
+        
+        // Reset departure selection if it no longer meets the minimum duration requirement
+        // This handles the case where user selects a 2h slot (valid for Chambre), 
+        // then changes to a regular suite (requires 3h minimum)
+        if (this.selectedArrival && this.selectedDeparture && this.limitsLoaded) {
+          const [arrHour] = this.selectedArrival.split(':').map(Number)
+          const [depHour] = this.selectedDeparture.split(':').map(Number)
+          const duration = Math.max(0, depHour - arrHour)
+          
+          // Calculate the new effective minimum hours based on the new suite selection
+          let newEffectiveMinHours = this.bookingLimits.day_min_hours || 3
+          if (newVal && this.specialMinDurationSuites.includes(newVal.Id)) {
+            newEffectiveMinHours = this.specialMinHours || this.bookingLimits.day_min_hours
+          }
+          
+          if (duration < newEffectiveMinHours) {
+            console.log('Resetting departure due to suite change - duration now invalid:', { 
+              duration, 
+              newEffectiveMinHours, 
+              suiteId: newVal?.Id 
+            })
+            this.selectedDeparture = ''
+          }
+        }
       },
       immediate: true
     },
@@ -458,16 +482,23 @@ export default {
         return !hasSlotWithThisArrival
       }
 
-      // If no suite is selected, check if there's at least one suite with at least one available slot starting at this arrival time
+      // If no suite is selected, check if there's at least one suite with at least one available slot 
+      // starting at this arrival time AND meeting the default minimum duration (3h)
+      // This prevents showing arrival times that only have 2-hour slots (valid only for special Chambres)
+      const defaultMinHours = this.bookingLimits.day_min_hours || 3
+      
       for (const suiteId in this.dateAvailability.suite_availability) {
         const slots = this.dateAvailability.suite_availability[suiteId]
-        const hasSlotWithThisArrival = slots.some(slot => slot.arrival === arrivalTime)
-        if (hasSlotWithThisArrival) {
-          return false // At least one slot available with this arrival time
+        // Only consider slots that meet the default minimum duration
+        const hasValidSlotWithThisArrival = slots.some(slot => 
+          slot.arrival === arrivalTime && slot.duration >= defaultMinHours
+        )
+        if (hasValidSlotWithThisArrival) {
+          return false // At least one valid slot available with this arrival time
         }
       }
 
-      return true // No slots available with this arrival time
+      return true // No valid slots available with this arrival time
     },
 
     isDepartureTimeDisabled(departureTime) {
@@ -541,21 +572,39 @@ export default {
         departureTime
       })
 
+      // When no suite is selected, enforce default minimum hours (3h) - not the special 2h for Chambres
+      // This prevents users from selecting 2-hour slots that are only valid for special Chambres
+      const defaultMinHours = this.bookingLimits.day_min_hours || 3
+
       // If no arrival time selected, check if this departure time is used in any available slot
+      // that also meets the default minimum duration
       if (!this.selectedArrival) {
         for (const suiteId in this.dateAvailability.suite_availability) {
           const slots = this.dateAvailability.suite_availability[suiteId]
-          const hasSlotWithThisDeparture = slots.some(slot => slot.departure === departureTime)
-          console.log('Checking suite for departure:', { suiteId, departureTime, hasSlotWithThisDeparture, slotsCount: slots.length })
-          if (hasSlotWithThisDeparture) {
+          // Only consider slots that meet the default minimum duration
+          const hasValidSlotWithThisDeparture = slots.some(slot => 
+            slot.departure === departureTime && slot.duration >= defaultMinHours
+          )
+          console.log('Checking suite for departure:', { suiteId, departureTime, hasValidSlotWithThisDeparture, slotsCount: slots.length, defaultMinHours })
+          if (hasValidSlotWithThisDeparture) {
             return false
           }
         }
-        console.log('No suite has this departure time available')
+        console.log('No suite has this departure time available with valid duration')
         return true
       }
 
-      // If arrival time is selected, check if this combination is available
+      // If arrival time is selected, check if this combination is available AND meets minimum duration
+      const [arrHour] = this.selectedArrival.split(':').map(Number)
+      const [depHour] = departureTime.split(':').map(Number)
+      const duration = Math.max(0, depHour - arrHour)
+
+      // Disable if duration is less than default minimum hours
+      if (this.limitsLoaded && duration < defaultMinHours) {
+        console.log('Duration check failed (no suite selected):', { duration, defaultMinHours })
+        return true
+      }
+
       for (const suiteId in this.dateAvailability.suite_availability) {
         const slots = this.dateAvailability.suite_availability[suiteId]
         const hasMatchingSlot = slots.some(slot =>
