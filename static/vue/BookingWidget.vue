@@ -1153,7 +1153,7 @@ export default {
         if (this.debugMode) {
           this.reservationError = `Erreur lors de la création de la réservation: ${error.message}`
         } else {
-          this.reservationError = 'Erreur lors de la création de la réservation. Veuillez réessayer.'
+          this.reservationError = 'Votre réservation n\'a pas pu être finalisée.\nContactez-nous via WhatsApp ou par téléphone au 0455 19 03 85.\nNous vous aiderons immédiatement.'
         }
       } finally {
         this.reservationCreationLoading = false
