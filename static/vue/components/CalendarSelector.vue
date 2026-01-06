@@ -108,14 +108,14 @@
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': getNuiteeAvailabilityFlags(date).any, //any means morning OR night
-                      'unavailable': !getNuiteeAvailabilityFlags(date).any, //any means morning OR night
+                      'available': getNuiteeAvailabilityFlags(date).any && !isDateUnavailableForNuitee(date), //any means morning OR night
+                      'unavailable': !getNuiteeAvailabilityFlags(date).any || isDateUnavailableForNuitee(date), //any means morning OR night, or nuitée-specific unavailability
                       'morning-availability': getNuiteeAvailabilityFlags(date).morning,
                       'night-availability': getNuiteeAvailabilityFlags(date).night,
                       'other-suite-available': getOtherSuitesAvailabilityFlags(date).any, //any means morning OR night
                       'other-suite-morning': getOtherSuitesAvailabilityFlags(date).morning,
                       'other-suite-night': getOtherSuitesAvailabilityFlags(date).night,
-                      'past': isDateInPast(date),
+                      'past': isDateUnavailableForNuitee(date),
                       'other-month': !isDateInCurrentMonth(date, currentMonth),
                     }"
                     @click="!availabilityLoading && selectNightDate(date)"
@@ -143,14 +143,14 @@
                       'selected': isDateInRange(date),
                       'selected-start': isStartDate(date),
                       'selected-end': isEndDate(date),
-                      'available': getNuiteeAvailabilityFlags(date).any,
-                      'unavailable': !getNuiteeAvailabilityFlags(date).any,
+                      'available': getNuiteeAvailabilityFlags(date).any && !isDateUnavailableForNuitee(date),
+                      'unavailable': !getNuiteeAvailabilityFlags(date).any || isDateUnavailableForNuitee(date),
                       'other-suite-available': getOtherSuitesAvailabilityFlags(date).any,
                       'other-suite-morning': getOtherSuitesAvailabilityFlags(date).morning,
                       'other-suite-night': getOtherSuitesAvailabilityFlags(date).night,
                       'morning-availability': getNuiteeAvailabilityFlags(date).morning,
                       'night-availability': getNuiteeAvailabilityFlags(date).night,
-                      'past': isDateInPast(date),
+                      'past': isDateUnavailableForNuitee(date),
                       'other-month': !isDateInCurrentMonth(date, nextMonthDate),
                     }"
                     @click="!availabilityLoading && selectNightDate(date)"
@@ -857,9 +857,9 @@ export default {
     selectNightDate(date) {
       console.log('SELECTION selectNightDate called with date:', date)
       
-      // Not allowing selection of past dates
-      if (this.isDateInPast(date)) {
-        console.log('SELECTION Date is in past, returning')
+      // Not allowing selection of unavailable dates for nuitée (past, today, or tomorrow after 18:00)
+      if (this.isDateUnavailableForNuitee(date)) {
+        console.log('SELECTION Date is unavailable for nuitée, returning')
         return
       }
 
@@ -1031,6 +1031,32 @@ export default {
       const compareDate = new Date(date)
       compareDate.setHours(0, 0, 0, 0)
       return compareDate < today
+    },
+
+    // For nuitée bookings: today is unavailable, and tomorrow is unavailable if after 18:00
+    isDateUnavailableForNuitee(date) {
+      // First check if date is in the past
+      if (this.isDateInPast(date)) return true
+      
+      const now = new Date()
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      
+      const compareDate = new Date(date)
+      compareDate.setHours(0, 0, 0, 0)
+      
+      // Current day is always unavailable for nuitée
+      if (compareDate.getTime() === today.getTime()) return true
+      
+      // Tomorrow is unavailable if current time is after 18:00
+      const tomorrow = new Date(today)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      
+      if (compareDate.getTime() === tomorrow.getTime() && now.getHours() >= 18) {
+        return true
+      }
+      
+      return false
     },
 
     formatMonthYear(date) {
