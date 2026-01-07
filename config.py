@@ -125,6 +125,9 @@ if is_demo:
     # =============================================================================
     # TODO: Add demo building resource ID when available
     BUILDING_RESOURCE_ID = None
+    
+    # Building category ID (reservations with this category block all suites)
+    BUILDING_CATEGORY_ID = None
 
     # =============================================================================
     # SUITE TO PHYSICAL RESOURCE MAPPING (for resource blocks) - DEMO
@@ -250,6 +253,10 @@ else:
     # =============================================================================
     # When a resource block is assigned to this ID, it means the entire building is blocked
     BUILDING_RESOURCE_ID = "c29fb2fc-76e1-44ec-8cc2-b2dc009a8aec"
+    
+    # Building category ID (reservations with this category block all suites)
+    # This is the "Batiment" category used for whole-building reservations
+    BUILDING_CATEGORY_ID = "29764680-432e-4f88-97e1-b2c200b46912"
 
     # =============================================================================
     # SUITE TO PHYSICAL RESOURCE MAPPING (for resource blocks)

@@ -22,7 +22,8 @@ from config import (
     SUITE_ID_MAPPING,
     SUITE_ID_MAPPING_REVERSE,
     SUITE_TO_RESOURCE_ID,
-    BUILDING_RESOURCE_ID
+    BUILDING_RESOURCE_ID,
+    BUILDING_CATEGORY_ID
 )
 
 # Configure logging
@@ -299,7 +300,9 @@ def check_bulk_availability_journee(make_mews_request_func, data):
         reservations = result.get("Reservations", [])
         logger.info(f"Found {len(reservations)} reservations in chunk {chunk_index + 1}")
         # Group reservations by suite once per chunk to avoid scanning all reservations per slot
+        # Also extract building reservations separately (they block ALL suites)
         reservations_by_suite = {}
+        building_reservations = []
         for reservation in reservations:
             suite_id = reservation.get('RequestedCategoryId')
             if not suite_id:
@@ -310,10 +313,19 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                 continue
             res_start_utc = datetime.fromisoformat(start_raw.replace('Z', '+00:00'))
             res_end_utc = datetime.fromisoformat(end_raw.replace('Z', '+00:00'))
-            reservations_by_suite.setdefault(suite_id, []).append({
+            res_data = {
                 "start": res_start_utc.astimezone(BELGIAN_TZ),
                 "end": res_end_utc.astimezone(BELGIAN_TZ),
-            })
+            }
+            
+            # Check if this is a building reservation (blocks all suites)
+            if BUILDING_CATEGORY_ID and suite_id == BUILDING_CATEGORY_ID:
+                building_reservations.append(res_data)
+            else:
+                reservations_by_suite.setdefault(suite_id, []).append(res_data)
+        
+        if building_reservations:
+            logger.info(f"Found {len(building_reservations)} building reservations in chunk {chunk_index + 1}")
 
         # Check each date (process all dates, even if no reservations)
         for date_str in chunk_dates:
@@ -343,6 +355,17 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                         })
                 if filtered_reservations:
                     reservations_by_suite_for_date[suite_id] = filtered_reservations
+            
+            # Pre-filter building reservations for this date (they block ALL suites)
+            building_reservations_for_date = []
+            for res in building_reservations:
+                res_start_buffered = res["start"] - timedelta(hours=CLEANING_BUFFER_HOURS)
+                res_end_buffered = res["end"] + timedelta(hours=CLEANING_BUFFER_HOURS)
+                if res_end_buffered > day_start and res_start_buffered < day_end:
+                    building_reservations_for_date.append({
+                        "start_ts": int(res_start_buffered.timestamp()),
+                        "end_ts": int(res_end_buffered.timestamp()),
+                    })
 
             # For each suite, check which time slots are available
             suite_availability = {}
@@ -392,11 +415,20 @@ def check_bulk_availability_journee(make_mews_request_func, data):
                     slot_end_ts = int(slot_end.timestamp())
 
                     is_available = True
-                    for reservation in suite_reservations_for_date:
-                        # Check for overlap using integer timestamps (~3-5x faster than datetime comparison)
-                        if not (slot_end_ts <= reservation["start_ts"] or slot_start_ts >= reservation["end_ts"]):
+                    
+                    # First check for building reservation conflicts (blocks ALL suites)
+                    for building_res in building_reservations_for_date:
+                        if not (slot_end_ts <= building_res["start_ts"] or slot_start_ts >= building_res["end_ts"]):
                             is_available = False
                             break
+                    
+                    # Then check suite-specific reservations
+                    if is_available:
+                        for reservation in suite_reservations_for_date:
+                            # Check for overlap using integer timestamps (~3-5x faster than datetime comparison)
+                            if not (slot_end_ts <= reservation["start_ts"] or slot_start_ts >= reservation["end_ts"]):
+                                is_available = False
+                                break
 
                     # Also check for resource block conflicts (if still available after reservation check)
                     if is_available:
@@ -639,13 +671,19 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
 
                 return res_start.astimezone(belgian_tz), res_end.astimezone(belgian_tz)
 
-            def is_slot_available_for_suite(slot_start, slot_end, suite_reservations, suite_id_for_blocks=None):
-                """Check if a suite has no reservation conflicts and no resource block conflicts for the provided slot."""
+            def is_slot_available_for_suite(slot_start, slot_end, suite_reservations, suite_id_for_blocks=None, building_reservations=None):
+                """Check if a suite has no reservation conflicts, no building conflicts, and no resource block conflicts for the provided slot."""
                 # Convert slot times to timestamps once (not per reservation)
                 slot_start_ts = int(slot_start.timestamp())
                 slot_end_ts = int(slot_end.timestamp())
                 
-                # First check reservation conflicts using integer timestamps (~3-5x faster)
+                # First check building reservation conflicts (block ALL suites)
+                if building_reservations:
+                    for building_res in building_reservations:
+                        if not (slot_end_ts <= building_res["start_ts"] or slot_start_ts >= building_res["end_ts"]):
+                            return False
+                
+                # Then check suite-specific reservation conflicts using integer timestamps (~3-5x faster)
                 for reservation in suite_reservations:
                     # Use pre-computed buffered timestamps
                     if not (slot_end_ts <= reservation["start_ts"] or slot_start_ts >= reservation["end_ts"]):
@@ -664,25 +702,34 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
                 date_reservations = reservations_by_date[date_str]
 
                 # Map reservations per suite with localized times for accurate comparisons
+                # Also extract building reservations separately (they block ALL suites)
                 suite_reservations_map = {suite_id: [] for suite_id in suite_ids}
+                building_reservations_for_date = []
                 for reservation in date_reservations:
                     res_suite_id = reservation.get('RequestedCategoryId')
-                    if res_suite_id not in suite_reservations_map:
-                        continue
                     res_start_local, res_end_local = reservation_to_local_range(reservation)
                     if not res_start_local or not res_end_local:
                         continue
                     # Pre-compute buffered timestamps for ~3-5x faster comparisons
                     res_start_buffered = res_start_local - timedelta(hours=CLEANING_BUFFER_HOURS)
                     res_end_buffered = res_end_local + timedelta(hours=CLEANING_BUFFER_HOURS)
-                    suite_reservations_map[res_suite_id].append({
+                    res_data = {
                         "start": res_start_local,
                         "end": res_end_local,
                         "start_ts": int(res_start_buffered.timestamp()),
                         "end_ts": int(res_end_buffered.timestamp())
-                    })
+                    }
+                    
+                    # Check if this is a building reservation (blocks all suites)
+                    if BUILDING_CATEGORY_ID and res_suite_id == BUILDING_CATEGORY_ID:
+                        building_reservations_for_date.append(res_data)
+                    elif res_suite_id in suite_reservations_map:
+                        suite_reservations_map[res_suite_id].append(res_data)
 
                 booked_suites = {suite_id for suite_id, res in suite_reservations_map.items() if res}
+                
+                if building_reservations_for_date:
+                    logger.debug(f"Found {len(building_reservations_for_date)} building reservations for {date_str}")
 
                 date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
                 morning_start = belgian_tz.localize(datetime.combine(date_obj, datetime.min.time()))
@@ -695,9 +742,9 @@ def check_bulk_availability_nuitee(make_mews_request_func, data):
                 night_available_suite_ids = set()
 
                 for suite_id, suite_reservations in suite_reservations_map.items():
-                    if is_slot_available_for_suite(morning_start, morning_end, suite_reservations, suite_id):
+                    if is_slot_available_for_suite(morning_start, morning_end, suite_reservations, suite_id, building_reservations_for_date):
                         morning_available_suite_ids.add(suite_id)
-                    if is_slot_available_for_suite(night_start, night_end, suite_reservations, suite_id):
+                    if is_slot_available_for_suite(night_start, night_end, suite_reservations, suite_id, building_reservations_for_date):
                         night_available_suite_ids.add(suite_id)
 
                 available_morning = len(morning_available_suite_ids) > 0
