@@ -1260,7 +1260,14 @@ export default {
       if (!this.selectedService) return null
 
       if (this.selectedService.Id === this.frontendConfig.day_service_id) {
-        // Day service - use weekday rate
+        // Day service - check if weekend or weekday
+        if (this.selectedDates.start) {
+          const date = new Date(this.selectedDates.start)
+          const dayOfWeek = date.getDay() // 0 = Sunday, 6 = Saturday
+          if (dayOfWeek === 0 || dayOfWeek === 6) {
+            return this.frontendConfig.rate_id_journee_weekend
+          }
+        }
         return this.frontendConfig.rate_id_journee_semaine
       } else if (this.selectedService.Id === this.frontendConfig.night_service_id) {
         // Night service - use night rate
